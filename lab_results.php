@@ -23,6 +23,9 @@ switch ($action) {
 	case 'complete':
 		$controller->completeOrder();
 		break;
+	case 'file':
+		$controller->downloadFile();
+		break;
 	default:
 		$controller->index();
 		break;

@@ -155,6 +155,7 @@
 										<th>Patient</th>
 										<th>Test</th>
 										<th>Result Notes</th>
+										<th>Report</th>
 										<th>Completed By</th>
 										<th>Completed</th>
 									</tr>
@@ -168,6 +169,15 @@
 										</td>
 										<td><?= htmlspecialchars($o['test_name']) ?></td>
 										<td><?= $o['result_notes'] ? nl2br(htmlspecialchars($o['result_notes'])) : '<em class="text-muted">No notes</em>' ?></td>
+										<td>
+											<?php if (!empty($o['result_image_path'])): ?>
+												<a href="lab_results.php?action=file&order_id=<?= (int)$o['order_id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary" title="<?= htmlspecialchars($o['result_image_name'] ?? '') ?>">
+													<i class="fas fa-file-image mr-1"></i>View
+												</a>
+											<?php else: ?>
+												<span class="text-muted small">&mdash;</span>
+											<?php endif; ?>
+										</td>
 										<td><?= htmlspecialchars(trim(($o['completed_by_first'] ?? '') . ' ' . ($o['completed_by_last'] ?? ''))) ?></td>
 										<td><small><?= htmlspecialchars(date('M j, Y g:i A', strtotime($o['completed_at']))) ?></small></td>
 									</tr>
@@ -209,6 +219,11 @@
 					<label class="font-weight-bold" for="resultNotes">Result Notes <small class="font-weight-normal text-muted">(findings, values, observations)</small></label>
 					<textarea class="form-control" id="resultNotes" rows="4" placeholder="Enter results, values, or any relevant observations&#8230;"></textarea>
 				</div>
+				<div class="form-group mb-1 mt-2">
+					<label class="font-weight-bold" for="resultImage">Lab Report Image / PDF <small class="font-weight-normal text-muted">(optional, max 15 MB)</small></label>
+					<input type="file" class="form-control-file" id="resultImage" accept="image/jpeg,image/png,image/webp,application/pdf" />
+					<small class="form-text text-muted">Upload a scan or clear photo of the lab report. JPG, PNG, WebP or PDF.</small>
+				</div>
 				<div class="alert alert-danger d-none mt-2 mb-0" id="completeOrderError"></div>
 			</div>
 			<div class="modal-footer">
@@ -236,6 +251,7 @@
 	var $orderNotes  = $('#completeOrderNotes');
 	var $orderNotesLabel = $('#completeOrderNotesLabel');
 	var $resultNotes = $('#resultNotes');
+	var $resultImage = $('#resultImage');
 	var $error       = $('#completeOrderError');
 	var $confirmBtn  = $('#btnConfirmComplete');
 
@@ -257,6 +273,7 @@
 			$orderNotesLabel.hide();
 		}
 		$resultNotes.val('');
+		$resultImage.val('');
 		$error.addClass('d-none').text('');
 		$confirmBtn.prop('disabled', false).html('<i class="fas fa-check mr-1"></i>Complete');
 		$modal.modal('show');
@@ -273,15 +290,21 @@
 		$error.addClass('d-none');
 		$confirmBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Saving&hellip;');
 
+		var formData = new FormData();
+		formData.append('csrf_token',   csrfToken);
+		formData.append('order_id',     activeOrder.id);
+		formData.append('result_notes', $resultNotes.val().trim());
+		var fileInput = $resultImage[0];
+		if (fileInput && fileInput.files && fileInput.files[0]) {
+			formData.append('result_image', fileInput.files[0]);
+		}
+
 		$.ajax({
 			url: 'lab_results.php?action=complete',
 			method: 'POST',
-			contentType: 'application/json',
-			data: JSON.stringify({
-				csrf_token:   csrfToken,
-				order_id:     activeOrder.id,
-				result_notes: $resultNotes.val().trim()
-			}),
+			data: formData,
+			processData: false,
+			contentType: false,
 			dataType: 'json',
 			success: function (r) {
 				if (!r.success) {
