@@ -109,6 +109,19 @@ $exam_fields = [
 	'exam_gynae_ps', 'exam_gynae_pv', 'exam_gynae_via', 'exam_gynae_vili',
 ];
 
+// Head & Neck normal/abnormal status per site (values: NORMAL, ABN_LOW, ABN_MED, ABN_HIGH)
+$hnStatusSites = [
+	'exam_mouth', 'exam_lips', 'exam_buccal_mucosa',
+	'exam_teeth', 'exam_tongue', 'exam_oropharynx',
+	'exam_hypo', 'exam_naso_pharynx', 'exam_larynx',
+	'exam_nose', 'exam_ears', 'exam_neck',
+	'exam_bones_joints', 'exam_abdomen_genital',
+];
+foreach ($hnStatusSites as $_s) {
+	$exam_fields[] = $_s . '_status';
+}
+unset($_s);
+
 // Nurse history fields → stored in assessment (JSON)
 $history_fields = [
 	'condition_dm', 'condition_htn', 'condition_tsh', 'condition_heart_disease',

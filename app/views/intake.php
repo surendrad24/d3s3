@@ -47,6 +47,14 @@ load_language($_SESSION['language'] ?? 'en');
 			font-weight: 600;
 		}
 		.tab-navigation { margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; }
+		.hn-status { margin-bottom: .35rem; }
+		.hn-notes.hn-abnormal-high  { background-color: #ffe1e1; border-color: #dc3545; }
+		.hn-notes.hn-abnormal-med   { background-color: #eae1ff; border-color: #6f42c1; }
+		.hn-notes.hn-abnormal-low   { background-color: #fff8e1; border-color: #ffc107; }
+		.hn-status.status-abnormal-high { color: #dc3545; font-weight: 600; }
+		.hn-status.status-abnormal-med  { color: #6f42c1; font-weight: 600; }
+		.hn-status.status-abnormal-low  { color: #b45309; font-weight: 600; }
+		.hn-status.status-normal        { color: #28a745; }
 		.auto-save-indicator {
 			position: fixed; top: 70px; right: 20px; padding: 10px 20px;
 			background-color: #28a745; color: white; border-radius: 4px;
@@ -999,34 +1007,63 @@ load_language($_SESSION['language'] ?? 'en');
 							<!-- ── Examinations Tab ────────────────────────── -->
 							<div class="tab-pane fade" id="tab-examinations" role="tabpanel">
 								<form class="intake-auto-save">
+									<?php
+									// Renders one Head & Neck field: [Normal/Abnormal-Severity select] + notes input.
+									// Colour scheme: High=Red, Medium=Blue/Violet, Low=Amber, Normal=Green.
+									$hnField = function (string $key, string $label, string $col = 'col-md-4') use ($examData) {
+										$notes    = $examData[$key] ?? '';
+										$status   = $examData[$key . '_status'] ?? '';
+										$notesCls = 'form-control hn-notes';
+										if ($status === 'ABN_HIGH')     $notesCls .= ' hn-abnormal-high';
+										elseif ($status === 'ABN_MED')  $notesCls .= ' hn-abnormal-med';
+										elseif ($status === 'ABN_LOW')  $notesCls .= ' hn-abnormal-low';
+										$statusCls = 'form-control form-control-sm hn-status';
+										if ($status === 'ABN_HIGH')     $statusCls .= ' status-abnormal-high';
+										elseif ($status === 'ABN_MED')  $statusCls .= ' status-abnormal-med';
+										elseif ($status === 'ABN_LOW')  $statusCls .= ' status-abnormal-low';
+										elseif ($status === 'NORMAL')   $statusCls .= ' status-normal';
+										$sel = fn($v) => ($status === $v) ? ' selected' : '';
+										echo '<div class="' . $col . ' mb-3"><label>' . htmlspecialchars($label) . '</label>';
+										echo '<select class="' . $statusCls . '" name="' . $key . '_status" data-field="' . $key . '_status">';
+										echo '<option value=""' . $sel('') . '>&mdash;</option>';
+										echo '<option value="NORMAL"' . $sel('NORMAL') . '>Normal</option>';
+										echo '<option value="ABN_LOW"' . $sel('ABN_LOW') . '>Abnormal &mdash; Low</option>';
+										echo '<option value="ABN_MED"' . $sel('ABN_MED') . '>Abnormal &mdash; Medium (blue)</option>';
+										echo '<option value="ABN_HIGH"' . $sel('ABN_HIGH') . '>Abnormal &mdash; High (red)</option>';
+										echo '</select>';
+										echo '<input type="text" class="' . $notesCls . '" name="' . $key . '" data-field="' . $key . '" value="' . htmlspecialchars($notes) . '" placeholder="Notes" />';
+										echo '</div>';
+									};
+									?>
 									<div class="card card-outline card-secondary mb-3">
 										<div class="card-header">
 											<h5 class="card-title mb-0"><i class="fas fa-head-side-cough mr-2"></i><?= __('head_and_neck') ?></h5>
+											<small class="text-muted d-block">Pick Normal/Abnormal per site. <span class="text-danger font-weight-bold">Red = high risk</span>, <span style="color:#6f42c1;font-weight:bold;">violet = medium risk</span>.</small>
 										</div>
 										<div class="card-body">
 											<div class="row">
-												<div class="col-md-4 mb-3"><label><?= __('mouth') ?></label><input type="text" class="form-control" name="exam_mouth" data-field="exam_mouth" value="<?= htmlspecialchars($examData['exam_mouth'] ?? '') ?>" /></div>
-												<div class="col-md-4 mb-3"><label><?= __('lips') ?></label><input type="text" class="form-control" name="exam_lips" data-field="exam_lips" value="<?= htmlspecialchars($examData['exam_lips'] ?? '') ?>" /></div>
-												<div class="col-md-4 mb-3"><label><?= __('buccal_mucosa') ?></label><input type="text" class="form-control" name="exam_buccal_mucosa" data-field="exam_buccal_mucosa" value="<?= htmlspecialchars($examData['exam_buccal_mucosa'] ?? '') ?>" /></div>
+												<?php $hnField('exam_mouth',        __('mouth')); ?>
+												<?php $hnField('exam_lips',         __('lips')); ?>
+												<?php $hnField('exam_buccal_mucosa',__('buccal_mucosa')); ?>
 											</div>
 											<div class="row">
-												<div class="col-md-4 mb-3"><label><?= __('teeth') ?></label><input type="text" class="form-control" name="exam_teeth" data-field="exam_teeth" value="<?= htmlspecialchars($examData['exam_teeth'] ?? '') ?>" /></div>
-												<div class="col-md-4 mb-3"><label><?= __('tongue') ?></label><input type="text" class="form-control" name="exam_tongue" data-field="exam_tongue" value="<?= htmlspecialchars($examData['exam_tongue'] ?? '') ?>" /></div>
-												<div class="col-md-4 mb-3"><label><?= __('oropharynx') ?></label><input type="text" class="form-control" name="exam_oropharynx" data-field="exam_oropharynx" value="<?= htmlspecialchars($examData['exam_oropharynx'] ?? '') ?>" /></div>
+												<?php $hnField('exam_teeth',        __('teeth')); ?>
+												<?php $hnField('exam_tongue',       __('tongue')); ?>
+												<?php $hnField('exam_oropharynx',   __('oropharynx')); ?>
 											</div>
 											<div class="row">
-												<div class="col-md-4 mb-3"><label><?= __('hypo') ?></label><input type="text" class="form-control" name="exam_hypo" data-field="exam_hypo" value="<?= htmlspecialchars($examData['exam_hypo'] ?? '') ?>" /></div>
-												<div class="col-md-4 mb-3"><label><?= __('naso_pharynx') ?></label><input type="text" class="form-control" name="exam_naso_pharynx" data-field="exam_naso_pharynx" value="<?= htmlspecialchars($examData['exam_naso_pharynx'] ?? '') ?>" /></div>
-												<div class="col-md-4 mb-3"><label><?= __('larynx') ?></label><input type="text" class="form-control" name="exam_larynx" data-field="exam_larynx" value="<?= htmlspecialchars($examData['exam_larynx'] ?? '') ?>" /></div>
+												<?php $hnField('exam_hypo',         __('hypo')); ?>
+												<?php $hnField('exam_naso_pharynx', __('naso_pharynx')); ?>
+												<?php $hnField('exam_larynx',       __('larynx')); ?>
 											</div>
 											<div class="row">
-												<div class="col-md-4 mb-3"><label><?= __('nose') ?></label><input type="text" class="form-control" name="exam_nose" data-field="exam_nose" value="<?= htmlspecialchars($examData['exam_nose'] ?? '') ?>" /></div>
-												<div class="col-md-4 mb-3"><label><?= __('ears') ?></label><input type="text" class="form-control" name="exam_ears" data-field="exam_ears" value="<?= htmlspecialchars($examData['exam_ears'] ?? '') ?>" /></div>
-												<div class="col-md-4 mb-3"><label><?= __('neck') ?></label><input type="text" class="form-control" name="exam_neck" data-field="exam_neck" value="<?= htmlspecialchars($examData['exam_neck'] ?? '') ?>" /></div>
+												<?php $hnField('exam_nose',         __('nose')); ?>
+												<?php $hnField('exam_ears',         __('ears')); ?>
+												<?php $hnField('exam_neck',         __('neck')); ?>
 											</div>
 											<div class="row">
-												<div class="col-md-6 mb-3"><label><?= __('bones_joints') ?></label><input type="text" class="form-control" name="exam_bones_joints" data-field="exam_bones_joints" value="<?= htmlspecialchars($examData['exam_bones_joints'] ?? '') ?>" /></div>
-												<div class="col-md-6 mb-0"><label><?= __('abdomen_genital') ?></label><input type="text" class="form-control" name="exam_abdomen_genital" data-field="exam_abdomen_genital" value="<?= htmlspecialchars($examData['exam_abdomen_genital'] ?? '') ?>" /></div>
+												<?php $hnField('exam_bones_joints',   __('bones_joints'),    'col-md-6'); ?>
+												<?php $hnField('exam_abdomen_genital',__('abdomen_genital'), 'col-md-6'); ?>
 											</div>
 										</div>
 									</div>
@@ -1427,6 +1464,19 @@ load_language($_SESSION['language'] ?? 'en');
 			var value = $(this).val();
 			clearTimeout(saveTimeout[field]);
 			saveTimeout[field] = setTimeout(function () { autoSave(field, value); }, 1000);
+		});
+
+		// Head & Neck: recolor notes + status select when severity changes
+		$('.intake-auto-save').on('change', 'select.hn-status', function () {
+			var $sel   = $(this);
+			var val    = $sel.val();
+			var $notes = $sel.next('input.hn-notes');
+			$notes.removeClass('hn-abnormal-high hn-abnormal-med hn-abnormal-low');
+			$sel.removeClass('status-abnormal-high status-abnormal-med status-abnormal-low status-normal');
+			if      (val === 'ABN_HIGH') { $notes.addClass('hn-abnormal-high'); $sel.addClass('status-abnormal-high'); }
+			else if (val === 'ABN_MED')  { $notes.addClass('hn-abnormal-med');  $sel.addClass('status-abnormal-med');  }
+			else if (val === 'ABN_LOW')  { $notes.addClass('hn-abnormal-low');  $sel.addClass('status-abnormal-low');  }
+			else if (val === 'NORMAL')   { $sel.addClass('status-normal'); }
 		});
 
 		// Conditional sections
