@@ -562,6 +562,25 @@ load_language($_SESSION['language'] ?? 'en');
 											<i class="fas fa-save mr-1"></i> <?= __('save_changes') ?>
 										</button>
 									</div>
+									<div class="card card-outline card-warning mb-3">
+										<div class="card-header py-2"><h6 class="mb-0 text-muted text-uppercase" style="font-size:.72rem;letter-spacing:.08em;"><i class="fas fa-file-signature mr-1 text-warning"></i>Signed Consent Form</h6></div>
+										<div class="card-body py-3">
+											<label class="small font-weight-bold">Upload signed consent</label>
+											<input type="file" id="consentFormFile" accept="image/jpeg,image/png,image/webp,application/pdf" class="form-control-file" />
+											<small class="form-text text-muted">Scan or photo of the signed consent form. JPG, PNG, WebP or PDF. Max 15 MB.</small>
+											<div id="consentFormStatus" class="mt-2">
+												<?php if (!empty($cs['consent_form_path'])): ?>
+													<a href="intake.php?action=consent-file&case_sheet_id=<?= (int)$csId ?>" target="_blank" class="btn btn-sm btn-outline-info">
+														<i class="fas fa-file-signature mr-1"></i>View consent (<?= htmlspecialchars($cs['consent_form_name'] ?? 'file') ?>)
+													</a>
+													<?php if (!empty($cs['consent_uploaded_at'])): ?>
+														<small class="text-muted ml-2">Uploaded <?= htmlspecialchars(date('d M Y H:i', strtotime($cs['consent_uploaded_at']))) ?></small>
+													<?php endif; ?>
+												<?php endif; ?>
+											</div>
+											<div id="consentFormError" class="text-danger small mt-1"></div>
+										</div>
+									</div>
 								</div>
 								<div class="tab-navigation mt-2">
 									<button type="button" class="btn btn-secondary" disabled><i class="fas fa-chevron-left"></i> <?= __('previous') ?></button>
@@ -1500,6 +1519,33 @@ load_language($_SESSION['language'] ?? 'en');
 						return;
 					}
 					$status.html('<a href="' + r.url + '" target="_blank" class="btn btn-sm btn-outline-info"><i class="fas fa-file-image mr-1"></i>View current USG (' + $('<span>').text(r.name).html() + ')</a>');
+				},
+				error: function () { $err.text('Upload failed.'); $status.empty(); }
+			});
+		});
+
+		// Consent form upload: auto-upload on file selection
+		$('#consentFormFile').on('change', function () {
+			var f = this.files && this.files[0];
+			var $err = $('#consentFormError').text('');
+			var $status = $('#consentFormStatus');
+			if (!f) return;
+			var fd = new FormData();
+			fd.append('csrf_token', csrfToken);
+			fd.append('case_sheet_id', caseSheetId);
+			fd.append('consent_file', f);
+			$status.html('<i class="fas fa-spinner fa-spin"></i> Uploading&hellip;');
+			$.ajax({
+				url: 'intake.php?action=upload-consent',
+				method: 'POST', data: fd, processData: false, contentType: false, dataType: 'json',
+				success: function (r) {
+					if (!r.success) {
+						$err.text(r.message || 'Upload failed.');
+						$status.empty();
+						return;
+					}
+					var when = r.uploaded_at ? ' <small class="text-muted ml-2">Uploaded ' + $('<span>').text(r.uploaded_at).html() + '</small>' : '';
+					$status.html('<a href="' + r.url + '" target="_blank" class="btn btn-sm btn-outline-info"><i class="fas fa-file-signature mr-1"></i>View consent (' + $('<span>').text(r.name).html() + ')</a>' + when);
 				},
 				error: function () { $err.text('Upload failed.'); $status.empty(); }
 			});

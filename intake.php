@@ -57,6 +57,12 @@ switch ($action) {
 	case 'pelvic-usg-file':
 		$controller->downloadPelvicUsg();
 		break;
+	case 'upload-consent':
+		$controller->uploadConsent();
+		break;
+	case 'consent-file':
+		$controller->downloadConsent();
+		break;
 	default:
 		$controller->intake();
 		break;
