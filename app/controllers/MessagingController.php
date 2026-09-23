@@ -30,6 +30,11 @@ class MessagingController
 			$this->processArchive($action === 'unarchive');
 		}
 
+		// ── POST: delete sent message (soft-delete for sender) ───────────
+		if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'delete') {
+			$this->processDelete();
+		}
+
 		// ── POST: send message (always runs before panel logic) ──────────
 		$formError = null;
 		if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -78,7 +83,7 @@ class MessagingController
 						        MIN(m.sent_at)  AS sent_at
 						   FROM messages m
 						   JOIN users u ON m.recipient_user_id = u.user_id
-						  WHERE m.sender_user_id = ?
+						  WHERE m.sender_user_id = ? AND m.sender_deleted = 0
 						  GROUP BY m.thread_id
 						  ORDER BY sent_at DESC'
 					);
@@ -142,9 +147,12 @@ class MessagingController
 			$stmt->execute([$msgId]);
 			$message = $stmt->fetch();
 
+			$isViewerSender    = $message && (int)$message['sender_user_id']    === $userId;
+			$isViewerRecipient = $message && (int)$message['recipient_user_id'] === $userId;
+
 			if (!$message ||
-			    ((int)$message['sender_user_id'] !== $userId &&
-			     (int)$message['recipient_user_id'] !== $userId)
+			    (!$isViewerSender && !$isViewerRecipient) ||
+			    ($isViewerSender && !$isViewerRecipient && !empty($message['sender_deleted']))
 			) {
 				$flashError = 'Message not found or access denied.';
 			} else {
@@ -281,6 +289,46 @@ class MessagingController
 				'UPDATE messages SET recipient_archived = ? WHERE message_id = ? AND recipient_user_id = ?'
 			);
 			$stmt->execute([$unarchive ? 0 : 1, $msgId, $userId]);
+			echo json_encode(['success' => true]);
+		} catch (Throwable $e) {
+			echo json_encode(['success' => false, 'error' => 'Database error.']);
+		}
+		exit;
+	}
+
+	// ── Soft-delete a sent message for the sender ──────────────────────
+	// Deletes every row in the thread that this user sent. The recipient
+	// copies are unaffected — recipients still see the message.
+	private function processDelete(): void
+	{
+		header('Content-Type: application/json');
+		if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+			echo json_encode(['success' => false, 'error' => 'Invalid request token.']);
+			exit;
+		}
+		$msgId  = (int)($_POST['message_id'] ?? 0);
+		$userId = (int)$_SESSION['user_id'];
+		if ($msgId < 1) {
+			echo json_encode(['success' => false, 'error' => 'Invalid message.']);
+			exit;
+		}
+		try {
+			$pdo = getDBConnection();
+			$stmt = $pdo->prepare(
+				'SELECT thread_id FROM messages
+				  WHERE message_id = ? AND sender_user_id = ?'
+			);
+			$stmt->execute([$msgId, $userId]);
+			$threadId = $stmt->fetchColumn();
+			if (!$threadId) {
+				echo json_encode(['success' => false, 'error' => 'Not your message.']);
+				exit;
+			}
+			$stmt = $pdo->prepare(
+				'UPDATE messages SET sender_deleted = 1
+				  WHERE thread_id = ? AND sender_user_id = ?'
+			);
+			$stmt->execute([$threadId, $userId]);
 			echo json_encode(['success' => true]);
 		} catch (Throwable $e) {
 			echo json_encode(['success' => false, 'error' => 'Database error.']);

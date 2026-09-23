@@ -346,18 +346,34 @@ $roleLabels = [
 			<hr class="mt-2 mb-3" />
 			<p class="mb-0" style="white-space:pre-wrap;word-break:break-word"><?= nl2br(htmlspecialchars($message['body'])) ?></p>
 		</div>
-		<?php if ((int)$message['recipient_user_id'] === (int)$_SESSION['user_id']): ?>
+		<?php
+			$viewerIsRecipient = (int)$message['recipient_user_id'] === (int)$_SESSION['user_id'];
+			$viewerIsSender    = (int)$message['sender_user_id']    === (int)$_SESSION['user_id'];
+		?>
+		<?php if ($viewerIsRecipient || $viewerIsSender): ?>
 		<div class="card-footer d-flex justify-content-between align-items-center" style="gap:.5rem">
-			<button type="button" class="btn btn-outline-secondary btn-sm" id="archiveBtn"
-			        data-message-id="<?= (int)$message['message_id'] ?>"
-			        data-archived="<?= (int)($message['recipient_archived'] ?? 0) ?>"
-			        data-csrf="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-				<?php if (!empty($message['recipient_archived'])): ?>
-				<i class="fas fa-inbox mr-1"></i>Move to Inbox
-				<?php else: ?>
-				<i class="fas fa-archive mr-1"></i>Archive
+			<div style="display:flex;gap:.5rem">
+				<?php if ($viewerIsRecipient): ?>
+				<button type="button" class="btn btn-outline-secondary btn-sm" id="archiveBtn"
+				        data-message-id="<?= (int)$message['message_id'] ?>"
+				        data-archived="<?= (int)($message['recipient_archived'] ?? 0) ?>"
+				        data-csrf="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+					<?php if (!empty($message['recipient_archived'])): ?>
+					<i class="fas fa-inbox mr-1"></i>Move to Inbox
+					<?php else: ?>
+					<i class="fas fa-archive mr-1"></i>Archive
+					<?php endif; ?>
+				</button>
 				<?php endif; ?>
-			</button>
+				<?php if ($viewerIsSender): ?>
+				<button type="button" class="btn btn-outline-danger btn-sm" id="deleteBtn"
+				        data-message-id="<?= (int)$message['message_id'] ?>"
+				        data-csrf="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+					<i class="fas fa-trash mr-1"></i>Delete
+				</button>
+				<?php endif; ?>
+			</div>
+			<?php if ($viewerIsRecipient): ?>
 			<div style="display:flex;gap:.5rem">
 				<a href="messages.php?action=compose&reply_to=<?= (int)$message['sender_user_id'] ?>&reply_subject=<?= urlencode('Re: ' . $message['subject']) ?>"
 				   class="btn btn-outline-primary btn-sm" data-compose-link>
@@ -370,6 +386,7 @@ $roleLabels = [
 				</a>
 				<?php endif; ?>
 			</div>
+			<?php endif; ?>
 		</div>
 		<?php endif; ?>
 	</div>
@@ -568,6 +585,43 @@ function initPanelScripts() {
 					'</div>';
 			})
 			.catch(function () { archiveBtn.disabled = false; });
+		});
+	}
+
+	// ── Delete (sender-side) button ──────────────────────────────────────
+	var deleteBtn = contentPanel.querySelector('#deleteBtn');
+	if (deleteBtn) {
+		deleteBtn.addEventListener('click', function () {
+			if (!confirm('Delete this message from your Sent folder? Recipients will still see it.')) return;
+
+			var msgId = deleteBtn.dataset.messageId;
+			deleteBtn.disabled = true;
+
+			var data = new FormData();
+			data.append('csrf_token', deleteBtn.dataset.csrf);
+			data.append('message_id', msgId);
+
+			fetch('messages.php?action=delete', {
+				method: 'POST',
+				headers: { 'X-Requested-With': 'XMLHttpRequest' },
+				body: data
+			})
+			.then(function (r) { return r.json(); })
+			.then(function (res) {
+				if (!res.success) { deleteBtn.disabled = false; alert(res.error || 'Delete failed.'); return; }
+				var row = document.querySelector('.msg-row[data-msg-id="' + msgId + '"]');
+				if (row) row.remove();
+				var scroll = document.getElementById('msgListScroll');
+				if (scroll && !scroll.querySelector('.msg-row')) {
+					scroll.innerHTML = '<div class="text-center text-muted py-5" style="font-size:.85rem">No sent messages.</div>';
+				}
+				contentPanel.innerHTML =
+					'<div class="msg-welcome">' +
+					'<i class="fas fa-trash fa-4x mb-3 text-muted"></i>' +
+					'<p class="mb-0">Message deleted.</p>' +
+					'</div>';
+			})
+			.catch(function () { deleteBtn.disabled = false; });
 		});
 	}
 
