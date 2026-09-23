@@ -1472,6 +1472,43 @@ class ClinicalController
 		exit;
 	}
 
+	// ── Referral letter (print-to-PDF) ─────────────────────
+
+	public function generateReferralPdf(): void
+	{
+		$this->requireDoctorRole();
+		$caseSheetId = (int)($_GET['case_sheet_id'] ?? 0);
+		if ($caseSheetId <= 0) { http_response_code(400); exit('Missing case sheet.'); }
+
+		$pdo = getDBConnection();
+		$stmt = $pdo->prepare(
+			"SELECT cs.*, TRIM(CONCAT(u.first_name,' ',u.last_name)) AS doctor_name,
+			              u.email AS doctor_email, u.phone_e164 AS doctor_phone
+			   FROM case_sheets cs
+			   LEFT JOIN users u ON u.user_id = cs.assigned_doctor_user_id
+			  WHERE cs.case_sheet_id = ?
+			    AND (cs.assigned_doctor_user_id = ?
+			         OR EXISTS (SELECT 1 FROM case_sheet_consultants
+			                     WHERE case_sheet_id = cs.case_sheet_id
+			                       AND doctor_user_id = ?))"
+		);
+		$stmt->execute([$caseSheetId, $_SESSION['user_id'], $_SESSION['user_id']]);
+		$caseSheet = $stmt->fetch();
+		if (!$caseSheet) { http_response_code(404); exit('Case sheet not found or not accessible.'); }
+
+		$stmt = $pdo->prepare(
+			'SELECT patient_code, first_name, last_name, sex, date_of_birth, age_years,
+			        phone_e164, address_line1, city, state_province, postal_code,
+			        blood_group, allergies
+			   FROM patients WHERE patient_id = ?'
+		);
+		$stmt->execute([$caseSheet['patient_id']]);
+		$patient = $stmt->fetch();
+		if (!$patient) { http_response_code(404); exit('Patient not found.'); }
+
+		require __DIR__ . '/../views/referral_pdf.php';
+	}
+
 	// ── Role guards ─────────────────────────────────────────
 
 	private function requireClinicalRole(): void

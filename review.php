@@ -32,6 +32,9 @@ switch ($action) {
 	case 'search-doctors':
 		$controller->searchDoctors();
 		break;
+	case 'referral-pdf':
+		$controller->generateReferralPdf();
+		break;
 	default:
 		$controller->doctorReview();
 		break;

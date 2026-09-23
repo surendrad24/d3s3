@@ -1600,7 +1600,11 @@ load_language($_SESSION['language'] ?? 'en');
 												</div>
 											</div>
 
-											<h5 class="mb-3"><?= __('referrals_heading') ?></h5>
+											<h5 class="mb-3"><?= __('referrals_heading') ?>
+												<a href="review.php?action=referral-pdf&case_sheet_id=<?= (int)$csId ?>" target="_blank" class="btn btn-sm btn-outline-primary float-right">
+													<i class="fas fa-file-pdf mr-1"></i>Generate Referral Letter (PDF)
+												</a>
+											</h5>
 											<div class="row">
 												<div class="col-md-4 mb-3">
 													<label for="referral_to"><?= __('referral_to_label') ?></label>
