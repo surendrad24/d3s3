@@ -422,5 +422,6 @@ document.getElementById('copyRegCodeBtn') && document.getElementById('copyRegCod
 	setTimeout(function() { icon.className = 'fas fa-copy'; }, 1500);
 });
 </script>
+<script src="assets/js/password-toggle.js"></script>
 </body>
 </html>

@@ -1241,5 +1241,6 @@ $(function () {
 
 });
 </script>
+<script src="assets/js/password-toggle.js"></script>
 </body>
 </html>
