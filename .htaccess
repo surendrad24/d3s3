@@ -1,0 +1,64 @@
+# ─── Force HTTPS ─────────────────────────────────────────────────────
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} off
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# ─── Directory listing ───────────────────────────────────────────────
+Options -Indexes
+
+# ─── Block access to dot-files (.user.ini, etc.) ────────────────────
+<Files ".*">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Deny,Allow
+        Deny from all
+    </IfModule>
+</Files>
+
+# ─── Security headers ───────────────────────────────────────────────
+<IfModule mod_headers.c>
+    # Prevent MIME-type sniffing attacks
+    Header set X-Content-Type-Options "nosniff"
+
+    # Block clickjacking on every page
+    Header set X-Frame-Options "DENY"
+
+    # Stop browsers caching sensitive responses
+    Header set Cache-Control "no-store, no-cache, must-revalidate, private"
+
+    # Disable version leakage
+    Header unset Server
+    Header unset X-Powered-By
+
+    # Strict Transport Security (enforces HTTPS — BlueHost supports it)
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # Disable legacy XSS auditor (deprecated; modern browsers ignore it; CSP handles XSS)
+    Header set X-XSS-Protection "0"
+
+    # Content Security Policy
+    # self: pages and AJAX; unsafe-inline: Bootstrap/AdminLTE inline styles/scripts;
+    # data: for inline SVG/base64 images used by AdminLTE icons
+    Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+
+    # Referrer policy – don't leak URL to third parties
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Permissions policy – disable unnecessary browser features
+    Header set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
+
+# ─── PHP hardening (mod_php only – .user.ini handles PHP-FPM) ────────
+<IfModule mod_php.c>
+    php_flag  expose_php            Off
+    php_flag  file_uploads          On
+    php_value upload_max_filesize   2M
+    php_flag  allow_url_include     Off
+    php_flag  allow_url_fopen       Off
+    php_flag  display_errors        Off
+    php_flag  log_errors            On
+</IfModule>
