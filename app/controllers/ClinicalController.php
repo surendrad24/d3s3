@@ -632,7 +632,7 @@ class ClinicalController
 
 		$firstName = trim($_POST['first_name'] ?? '');
 		$lastName  = trim($_POST['last_name'] ?? '');
-		$sex       = $_POST['sex'] ?? 'UNKNOWN';
+		$sex       = $_POST['sex'] ?? 'FEMALE';
 		$dob       = $_POST['date_of_birth'] ?? null;
 		$ageYears  = $_POST['age_years'] ?? null;
 		$phone     = trim($_POST['phone_e164'] ?? '');
@@ -644,7 +644,7 @@ class ClinicalController
 
 		$validSex = ['MALE', 'FEMALE', 'OTHER', 'UNKNOWN'];
 		if (!in_array($sex, $validSex, true)) {
-			$sex = 'UNKNOWN';
+			$sex = 'FEMALE';
 		}
 
 		if ($dob !== null && $dob !== '') {

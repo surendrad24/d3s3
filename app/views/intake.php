@@ -220,7 +220,7 @@ load_language($_SESSION['language'] ?? 'en');
 									<div class="row">
 										<div class="col-md-4"><div class="form-group"><label><?= __('first_name') ?> <span class="text-danger">*</span></label><input type="text" class="form-control" id="newFirstName" /></div></div>
 										<div class="col-md-4"><div class="form-group"><label><?= __('last_name') ?></label><input type="text" class="form-control" id="newLastName" /></div></div>
-										<div class="col-md-4"><div class="form-group"><label><?= __('sex') ?></label><select class="form-control" id="newSex"><option value="UNKNOWN"><?= __('sex_unknown') ?></option><option value="MALE"><?= __('sex_male') ?></option><option value="FEMALE"><?= __('sex_female') ?></option><option value="OTHER"><?= __('sex_other') ?></option></select></div></div>
+										<div class="col-md-4"><div class="form-group"><label><?= __('sex') ?></label><select class="form-control" id="newSex"><option value="FEMALE" selected><?= __('sex_female') ?></option><option value="MALE"><?= __('sex_male') ?></option><option value="OTHER"><?= __('sex_other') ?></option><option value="UNKNOWN"><?= __('sex_unknown') ?></option></select></div></div>
 									</div>
 									<div class="row">
 										<div class="col-md-4"><div class="form-group"><label><?= __('date_of_birth') ?></label><input type="date" class="form-control" id="newDob" /></div></div>
@@ -1565,7 +1565,7 @@ load_language($_SESSION['language'] ?? 'en');
 			$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Registering...');
 			$.post('intake.php?action=register-patient', { csrf_token: csrfToken, first_name: firstName, last_name: $.trim($('#newLastName').val()), sex: $('#newSex').val(), date_of_birth: $('#newDob').val(), age_years: $('#newAge').val(), phone_e164: $.trim($('#newPhone').val()) }, function (data) {
 				$btn.prop('disabled', false).html('<i class="fas fa-user-plus mr-1"></i>Register & Select');
-				if (data.success) { selectPatient({ patient_id: data.patient_id, patient_code: data.patient_code, first_name: data.first_name, last_name: data.last_name || '', sex: $('#newSex').val(), age_years: $('#newAge').val() || null, phone_e164: $.trim($('#newPhone').val()) || null }); $('#newFirstName, #newLastName, #newDob, #newAge, #newPhone').val(''); $('#newSex').val('UNKNOWN'); }
+				if (data.success) { selectPatient({ patient_id: data.patient_id, patient_code: data.patient_code, first_name: data.first_name, last_name: data.last_name || '', sex: $('#newSex').val(), age_years: $('#newAge').val() || null, phone_e164: $.trim($('#newPhone').val()) || null }); $('#newFirstName, #newLastName, #newDob, #newAge, #newPhone').val(''); $('#newSex').val('FEMALE'); }
 				else { $err.text(data.message || 'Registration failed.').removeClass('d-none'); }
 			}, 'json').fail(function () { $btn.prop('disabled', false).html('<i class="fas fa-user-plus mr-1"></i>Register & Select'); $err.text('Server error.').removeClass('d-none'); });
 		});
