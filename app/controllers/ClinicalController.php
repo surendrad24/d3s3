@@ -1653,6 +1653,56 @@ class ClinicalController
 		exit;
 	}
 
+	/**
+	 * Send an existing voice note to Sarvam ASR and persist the transcript.
+	 * If the note already has a transcript, returns it unless force=1 is set.
+	 */
+	public function transcribeVoiceNote(): void
+	{
+		$this->requireClinicalRole();
+		header('Content-Type: application/json');
+		if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+			echo json_encode(['success' => false, 'message' => 'POST required']); exit;
+		}
+		if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+			echo json_encode(['success' => false, 'message' => 'Invalid security token.']); exit;
+		}
+		$id    = (int)($_POST['voice_note_id'] ?? 0);
+		$force = !empty($_POST['force']);
+		if ($id <= 0) { echo json_encode(['success' => false, 'message' => 'Missing id.']); exit; }
+
+		$pdo  = getDBConnection();
+		$stmt = $pdo->prepare('SELECT voice_note_id, file_path, mime_type, transcript FROM case_sheet_voice_notes WHERE voice_note_id = ?');
+		$stmt->execute([$id]);
+		$row  = $stmt->fetch();
+		if (!$row) { echo json_encode(['success' => false, 'message' => 'Recording not found.']); exit; }
+
+		if (!$force && !empty($row['transcript'])) {
+			echo json_encode(['success' => true, 'transcript' => $row['transcript'], 'cached' => true]);
+			exit;
+		}
+
+		require_once __DIR__ . '/../services/SarvamAsr.php';
+		$full = __DIR__ . '/../../' . self::VOICE_UPLOAD_BASE . $row['file_path'];
+		$result = SarvamAsr::transcribe($full, (string)$row['mime_type']);
+
+		if (!$result['success']) {
+			echo json_encode(['success' => false, 'message' => $result['error'] ?: 'Transcription failed.']);
+			exit;
+		}
+
+		$pdo->prepare('UPDATE case_sheet_voice_notes SET transcript = ? WHERE voice_note_id = ?')
+			->execute([$result['transcript'], $id]);
+
+		echo json_encode([
+			'success'    => true,
+			'transcript' => $result['transcript'],
+			'language'   => $result['language'],
+			'cached'     => false,
+		]);
+		exit;
+	}
+
 	// ── Referral letter (print-to-PDF) ─────────────────────
 
 	public function generateReferralPdf(): void

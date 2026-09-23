@@ -2658,8 +2658,14 @@ load_language($_SESSION['language'] ?? 'en');
 		var $wrap = $('<div class="voice-note-row d-flex align-items-center flex-wrap mb-2 p-2 border rounded"></div>').attr('data-vn-id', n.voice_note_id);
 		$wrap.append('<audio controls preload="none" src="' + esc(n.url) + '" class="mr-2 mb-1" style="height:32px;"></audio>');
 		$wrap.append('<small class="text-muted mr-2">' + esc(n.recorded_by || '') + ' · ' + esc(n.recorded_at) + (n.duration_secs ? ' · ' + fmtSecs(n.duration_secs) : '') + '</small>');
-		if (canDel) $wrap.append('<button type="button" class="btn btn-sm btn-link text-danger vn-delete p-0 ml-auto"><i class="fas fa-trash-alt"></i></button>');
-		if (n.transcript) $wrap.append('<div class="w-100 mt-1 small text-muted"><em>Transcript:</em> ' + esc(n.transcript) + '</div>');
+		var $actions = $('<span class="ml-auto"></span>');
+		var btnLabel = n.transcript ? '<i class="fas fa-sync-alt mr-1"></i>Re-transcribe' : '<i class="fas fa-language mr-1"></i>Transcribe';
+		$actions.append('<button type="button" class="btn btn-sm btn-link vn-transcribe p-0 mr-2" title="Send to Sarvam ASR">' + btnLabel + '</button>');
+		if (canDel) $actions.append('<button type="button" class="btn btn-sm btn-link text-danger vn-delete p-0"><i class="fas fa-trash-alt"></i></button>');
+		$wrap.append($actions);
+		var $transcript = $('<div class="w-100 mt-1 small text-muted vn-transcript-box"></div>');
+		if (n.transcript) $transcript.html('<em>Transcript:</em> ' + esc(n.transcript));
+		$wrap.append($transcript);
 		return $wrap;
 	}
 
@@ -2680,6 +2686,31 @@ load_language($_SESSION['language'] ?? 'en');
 		$.post('intake.php?action=delete-voice-note', { csrf_token: csrfToken, voice_note_id: id }, function (r) {
 			if (r.success) $row.remove();
 		}, 'json');
+	});
+
+	$(document).on('click', '.vn-transcribe', function () {
+		var $btn = $(this);
+		var $row = $btn.closest('.voice-note-row');
+		var $box = $row.find('.vn-transcript-box');
+		var id = $row.data('vn-id');
+		if (!id) return;
+		var hadTranscript = $box.text().length > 0;
+		if (hadTranscript && !confirm('Replace existing transcript?')) return;
+		$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Transcribing…');
+		$.post('intake.php?action=transcribe-voice-note', {
+			csrf_token: csrfToken, voice_note_id: id, force: hadTranscript ? 1 : 0
+		}, function (r) {
+			if (r.success) {
+				$box.html('<em>Transcript:</em> ' + $('<span>').text(r.transcript).html());
+				$btn.prop('disabled', false).html('<i class="fas fa-sync-alt mr-1"></i>Re-transcribe');
+			} else {
+				$box.html('<span class="text-danger">' + $('<span>').text(r.message || 'Transcription failed.').html() + '</span>');
+				$btn.prop('disabled', false).html('<i class="fas fa-language mr-1"></i>Transcribe');
+			}
+		}, 'json').fail(function () {
+			$box.html('<span class="text-danger">Transcription request failed.</span>');
+			$btn.prop('disabled', false).html('<i class="fas fa-language mr-1"></i>Transcribe');
+		});
 	});
 
 	function startRecorder(source) {

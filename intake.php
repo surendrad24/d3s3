@@ -75,6 +75,9 @@ switch ($action) {
 	case 'delete-voice-note':
 		$controller->deleteVoiceNote();
 		break;
+	case 'transcribe-voice-note':
+		$controller->transcribeVoiceNote();
+		break;
 	default:
 		$controller->intake();
 		break;
