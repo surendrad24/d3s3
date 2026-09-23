@@ -256,6 +256,11 @@ $_backLabel = !empty($_backParams) ? 'Back to Results' : 'Back to Patients';
 						   class="btn btn-sm btn-outline-secondary mb-2">
 							<i class="fas fa-arrow-left mr-1"></i><?= htmlspecialchars($_backLabel) ?>
 						</a>
+						<a href="patients.php?action=track&id=<?= (int)$patient['patient_id'] ?>"
+						   class="btn btn-sm btn-outline-info mb-2 ml-1"
+						   title="Live tracking view">
+							<i class="fas fa-route mr-1"></i>Track Visit
+						</a>
 						<h1 class="m-0 text-dark">
 							<i class="fas fa-user-injured mr-2"></i><?= $_fullName ?>
 						</h1>

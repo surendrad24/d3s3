@@ -493,9 +493,11 @@ $(function () {
 			        '<td class="col-city small">' + esc(p.city || '\u2014') + '</td>' +
 			        '<td class="small text-nowrap">' + lastVisit + '</td>' +
 			        '<td class="text-center">' + (parseInt(p.visit_count) || 0) + '</td>' +
-			        '<td>' +
-			        '<a href="' + href + '" class="btn btn-sm btn-outline-primary text-nowrap" tabindex="-1">' +
-			        '<i class="fas fa-folder-open mr-1"></i>Open</a>' +
+			        '<td class="text-nowrap">' +
+			        '<a href="' + href + '" class="btn btn-sm btn-outline-primary" tabindex="-1">' +
+			        '<i class="fas fa-folder-open mr-1"></i>Open</a> ' +
+			        '<a href="patients.php?action=track&id=' + p.patient_id + '" class="btn btn-sm btn-outline-info" tabindex="-1" title="Live tracking view">' +
+			        '<i class="fas fa-route mr-1"></i>Track</a>' +
 			        '</td>' +
 			        '</tr>';
 		});

@@ -224,6 +224,108 @@ class PatientController
 		exit;
 	}
 
+	// ── Patient tracking view ─────────────────────────────────
+
+	public function track(int $patientId): void
+	{
+		$this->requireRead();
+		if ($patientId <= 0) {
+			header('Location: patients.php'); exit;
+		}
+
+		$pdo = getDBConnection();
+
+		$stmt = $pdo->prepare(
+			'SELECT patient_id, patient_code, first_name, last_name, sex, date_of_birth,
+			        age_years, phone_e164, city, blood_group
+			   FROM patients WHERE patient_id = ?'
+		);
+		$stmt->execute([$patientId]);
+		$patient = $stmt->fetch();
+		if (!$patient) { header('Location: patients.php'); exit; }
+
+		$this->logAccess($pdo, $patientId, 'VIEW');
+
+		// Active (open) case sheet, if any
+		$stmt = $pdo->prepare(
+			"SELECT cs.*, TRIM(CONCAT(u.first_name,' ',u.last_name)) AS doctor_name
+			   FROM case_sheets cs
+			   LEFT JOIN users u ON u.user_id = cs.assigned_doctor_user_id
+			  WHERE cs.patient_id = ? AND cs.is_closed = 0
+			  ORDER BY cs.visit_datetime DESC LIMIT 1"
+		);
+		$stmt->execute([$patientId]);
+		$activeCase = $stmt->fetch() ?: null;
+
+		$statusTimeline = [];
+		$labOrders      = [];
+		$consultants    = [];
+		$voiceCounts    = ['PATIENT' => 0, 'DOCTOR' => 0];
+
+		if ($activeCase) {
+			$stmt = $pdo->prepare(
+				"SELECT al.new_value AS status, al.changed_at,
+				        TRIM(CONCAT(u.first_name,' ',u.last_name)) AS actor
+				   FROM case_sheet_audit_log al
+				   JOIN users u ON u.user_id = al.user_id
+				  WHERE al.case_sheet_id = ? AND al.field_name = 'status'
+				  ORDER BY al.changed_at ASC"
+			);
+			$stmt->execute([$activeCase['case_sheet_id']]);
+			$statusTimeline = $stmt->fetchAll();
+
+			try {
+				$stmt = $pdo->prepare(
+					'SELECT lo.lab_order_id, lo.test_name, lo.status, lo.ordered_at, lo.completed_at
+					   FROM lab_orders lo
+					  WHERE lo.case_sheet_id = ?
+					  ORDER BY lo.ordered_at ASC'
+				);
+				$stmt->execute([$activeCase['case_sheet_id']]);
+				$labOrders = $stmt->fetchAll();
+			} catch (Throwable $e) { $labOrders = []; }
+
+			try {
+				$stmt = $pdo->prepare(
+					"SELECT csc.doctor_user_id, csc.role_note,
+					        TRIM(CONCAT(u.first_name,' ',u.last_name)) AS name
+					   FROM case_sheet_consultants csc
+					   JOIN users u ON u.user_id = csc.doctor_user_id
+					  WHERE csc.case_sheet_id = ?
+					  ORDER BY csc.added_at ASC"
+				);
+				$stmt->execute([$activeCase['case_sheet_id']]);
+				$consultants = $stmt->fetchAll();
+			} catch (Throwable $e) { $consultants = []; }
+
+			try {
+				$stmt = $pdo->prepare(
+					"SELECT source, COUNT(*) AS n
+					   FROM case_sheet_voice_notes
+					  WHERE case_sheet_id = ?
+					  GROUP BY source"
+				);
+				$stmt->execute([$activeCase['case_sheet_id']]);
+				foreach ($stmt->fetchAll() as $r) { $voiceCounts[$r['source']] = (int)$r['n']; }
+			} catch (Throwable $e) { /* table not yet migrated */ }
+		}
+
+		// Prior visits timeline
+		$stmt = $pdo->prepare(
+			"SELECT cs.case_sheet_id, cs.visit_datetime, cs.visit_type, cs.status,
+			        cs.closure_type, cs.chief_complaint, cs.is_closed, cs.closed_at,
+			        TRIM(CONCAT(u.first_name,' ',u.last_name)) AS doctor_name
+			   FROM case_sheets cs
+			   LEFT JOIN users u ON u.user_id = cs.assigned_doctor_user_id
+			  WHERE cs.patient_id = ? AND cs.is_closed = 1
+			  ORDER BY cs.visit_datetime DESC LIMIT 25"
+		);
+		$stmt->execute([$patientId]);
+		$priorVisits = $stmt->fetchAll();
+
+		require __DIR__ . '/../views/patient_tracking.php';
+	}
+
 	// ── Access log writer ─────────────────────────────────────
 
 	private function logAccess(PDO $pdo, int $patientId, string $type): void

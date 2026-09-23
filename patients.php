@@ -45,6 +45,9 @@ switch ($action) {
 	case 'search':
 		$controller->searchAjax();
 		break;
+	case 'track':
+		$controller->track((int)($_GET['id'] ?? 0));
+		break;
 	default:
 		$controller->index();
 		break;
