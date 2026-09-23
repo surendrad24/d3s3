@@ -238,6 +238,12 @@ if ($_navCanPatientData && !$isPortalMessagesPage) {
 						<p>WhatsApp</p>
 					</a>
 				</li>
+				<li class="nav-item">
+					<a href="whatsapp_form.php" class="nav-link <?= (strpos($currentPage, 'whatsapp_form.php') !== false) ? 'active' : '' ?>">
+						<i class="nav-icon fas fa-clipboard-list text-success"></i>
+						<p>WhatsApp Forms</p>
+					</a>
+				</li>
 				<?php endif; ?>
 
 				<!-- Tasks – requires tasks read -->
