@@ -63,6 +63,18 @@ switch ($action) {
 	case 'consent-file':
 		$controller->downloadConsent();
 		break;
+	case 'upload-voice-note':
+		$controller->uploadVoiceNote();
+		break;
+	case 'voice-note-file':
+		$controller->downloadVoiceNote();
+		break;
+	case 'list-voice-notes':
+		$controller->listVoiceNotes();
+		break;
+	case 'delete-voice-note':
+		$controller->deleteVoiceNote();
+		break;
 	default:
 		$controller->intake();
 		break;

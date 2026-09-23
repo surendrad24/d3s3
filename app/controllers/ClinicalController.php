@@ -1472,6 +1472,187 @@ class ClinicalController
 		exit;
 	}
 
+	// ── Voice note recording (patient + doctor) ────────────
+
+	private const VOICE_UPLOAD_BASE = 'uploads/voice_notes/';
+	private const VOICE_MAX_BYTES   = 25 * 1024 * 1024; // 25 MB
+	private const VOICE_ALLOWED_MIME = [
+		'audio/webm'      => 'webm',
+		'audio/ogg'       => 'ogg',
+		'audio/mpeg'      => 'mp3',
+		'audio/mp4'       => 'm4a',
+		'audio/wav'       => 'wav',
+		'audio/x-wav'     => 'wav',
+		'video/webm'      => 'webm', // MediaRecorder reports video/webm even for audio-only tracks
+	];
+
+	public function uploadVoiceNote(): void
+	{
+		$this->requireClinicalRole();
+		header('Content-Type: application/json');
+		if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+			echo json_encode(['success' => false, 'message' => 'POST required']); exit;
+		}
+		if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+			echo json_encode(['success' => false, 'message' => 'Invalid security token.']); exit;
+		}
+		$caseSheetId = (int)($_POST['case_sheet_id'] ?? 0);
+		$source      = strtoupper((string)($_POST['source'] ?? ''));
+		$duration    = isset($_POST['duration_secs']) ? max(0, (int)$_POST['duration_secs']) : null;
+		if ($caseSheetId <= 0) {
+			echo json_encode(['success' => false, 'message' => 'Missing case sheet.']); exit;
+		}
+		if (!in_array($source, ['PATIENT','DOCTOR'], true)) {
+			echo json_encode(['success' => false, 'message' => 'Invalid source.']); exit;
+		}
+		if (!isset($_FILES['voice_file']) || $_FILES['voice_file']['error'] === UPLOAD_ERR_NO_FILE) {
+			echo json_encode(['success' => false, 'message' => 'No file uploaded.']); exit;
+		}
+		$file = $_FILES['voice_file'];
+		if ($file['error'] !== UPLOAD_ERR_OK) {
+			echo json_encode(['success' => false, 'message' => 'Upload failed (code ' . $file['error'] . ').']); exit;
+		}
+		if ($file['size'] > self::VOICE_MAX_BYTES) {
+			echo json_encode(['success' => false, 'message' => 'File too large. Max 25 MB.']); exit;
+		}
+		$finfo = new finfo(FILEINFO_MIME_TYPE);
+		$mime  = $finfo->file($file['tmp_name']);
+		if (!isset(self::VOICE_ALLOWED_MIME[$mime])) {
+			echo json_encode(['success' => false, 'message' => 'Unsupported audio format (' . $mime . ').']); exit;
+		}
+		$ext    = self::VOICE_ALLOWED_MIME[$mime];
+		$uuid   = bin2hex(random_bytes(16));
+		$subdir = date('Y/m');
+		$rel    = $subdir . '/' . $uuid . '.' . $ext;
+		$dir    = __DIR__ . '/../../' . self::VOICE_UPLOAD_BASE . $subdir;
+		if (!is_dir($dir) && !mkdir($dir, 0755, true)) {
+			echo json_encode(['success' => false, 'message' => 'Could not create upload directory.']); exit;
+		}
+		if (!move_uploaded_file($file['tmp_name'], $dir . '/' . $uuid . '.' . $ext)) {
+			echo json_encode(['success' => false, 'message' => 'Could not save the uploaded file.']); exit;
+		}
+
+		$pdo  = getDBConnection();
+		$stmt = $pdo->prepare(
+			'INSERT INTO case_sheet_voice_notes
+			   (case_sheet_id, source, file_path, file_name, mime_type, duration_secs, recorded_by_user_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)'
+		);
+		$stmt->execute([
+			$caseSheetId, $source, $rel,
+			$file['name'] ?: ($source . '_note_' . date('Ymd_His') . '.' . $ext),
+			$mime, $duration, (int)$_SESSION['user_id'],
+		]);
+		$id = (int)$pdo->lastInsertId();
+
+		echo json_encode([
+			'success' => true,
+			'note' => [
+				'voice_note_id' => $id,
+				'source'        => $source,
+				'url'           => 'intake.php?action=voice-note-file&voice_note_id=' . $id,
+				'name'          => $file['name'] ?: ('note_' . $id . '.' . $ext),
+				'mime_type'     => $mime,
+				'duration_secs' => $duration,
+				'recorded_at'   => date('d M Y H:i'),
+				'recorded_by'   => trim(($_SESSION['first_name'] ?? '') . ' ' . ($_SESSION['last_name'] ?? '')),
+			],
+		]);
+		exit;
+	}
+
+	public function downloadVoiceNote(): void
+	{
+		if (!can($_SESSION['user_role'] ?? '', 'case_sheets')) {
+			http_response_code(403); exit('Access denied.');
+		}
+		$id = (int)($_GET['voice_note_id'] ?? 0);
+		if ($id <= 0) { http_response_code(404); exit; }
+		$pdo  = getDBConnection();
+		$stmt = $pdo->prepare('SELECT file_path, file_name, mime_type FROM case_sheet_voice_notes WHERE voice_note_id = ?');
+		$stmt->execute([$id]);
+		$row  = $stmt->fetch();
+		if (!$row) { http_response_code(404); exit('Not found.'); }
+		if (strpos($row['file_path'], '..') !== false) { http_response_code(400); exit; }
+		$full = __DIR__ . '/../../' . self::VOICE_UPLOAD_BASE . $row['file_path'];
+		if (!is_file($full)) { http_response_code(404); exit('File missing on server.'); }
+		header('Content-Type: ' . $row['mime_type']);
+		header('Content-Disposition: inline; filename="' . rawurlencode($row['file_name']) . '"');
+		header('Content-Length: ' . (string)filesize($full));
+		header('Accept-Ranges: bytes');
+		header('X-Content-Type-Options: nosniff');
+		header('Cache-Control: private, max-age=3600');
+		readfile($full);
+		exit;
+	}
+
+	public function listVoiceNotes(): void
+	{
+		if (!can($_SESSION['user_role'] ?? '', 'case_sheets')) {
+			http_response_code(403); exit;
+		}
+		header('Content-Type: application/json');
+		$caseSheetId = (int)($_GET['case_sheet_id'] ?? 0);
+		$source      = strtoupper((string)($_GET['source'] ?? ''));
+		if ($caseSheetId <= 0) { echo json_encode(['success' => false, 'notes' => []]); exit; }
+		$pdo  = getDBConnection();
+		$sql  = "SELECT vn.voice_note_id, vn.source, vn.file_name, vn.mime_type, vn.duration_secs, vn.recorded_at,
+		                TRIM(CONCAT(u.first_name,' ',u.last_name)) AS recorded_by,
+		                vn.transcript
+		           FROM case_sheet_voice_notes vn
+		           JOIN users u ON u.user_id = vn.recorded_by_user_id
+		          WHERE vn.case_sheet_id = ?";
+		$args = [$caseSheetId];
+		if (in_array($source, ['PATIENT','DOCTOR'], true)) {
+			$sql .= ' AND vn.source = ?';
+			$args[] = $source;
+		}
+		$sql .= ' ORDER BY vn.recorded_at ASC';
+		$stmt = $pdo->prepare($sql);
+		$stmt->execute($args);
+		$notes = [];
+		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+			$row['url'] = 'intake.php?action=voice-note-file&voice_note_id=' . (int)$row['voice_note_id'];
+			$notes[] = $row;
+		}
+		echo json_encode(['success' => true, 'notes' => $notes]);
+		exit;
+	}
+
+	public function deleteVoiceNote(): void
+	{
+		$this->requireClinicalRole();
+		header('Content-Type: application/json');
+		if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+			echo json_encode(['success' => false, 'message' => 'POST required']); exit;
+		}
+		if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+			echo json_encode(['success' => false, 'message' => 'Invalid security token.']); exit;
+		}
+		$id = (int)($_POST['voice_note_id'] ?? 0);
+		if ($id <= 0) { echo json_encode(['success' => false, 'message' => 'Missing id.']); exit; }
+
+		$pdo  = getDBConnection();
+		$stmt = $pdo->prepare('SELECT file_path, recorded_by_user_id FROM case_sheet_voice_notes WHERE voice_note_id = ?');
+		$stmt->execute([$id]);
+		$row  = $stmt->fetch();
+		if (!$row) { echo json_encode(['success' => true]); exit; }
+
+		// Author, primary doctor, or admin/super-admin may delete.
+		$role       = $_SESSION['user_role'] ?? '';
+		$isAdminish = in_array($role, ['SUPER_ADMIN','ADMIN'], true);
+		$isAuthor   = (int)$row['recorded_by_user_id'] === (int)$_SESSION['user_id'];
+		if (!$isAdminish && !$isAuthor) {
+			echo json_encode(['success' => false, 'message' => 'You cannot delete another user\'s recording.']); exit;
+		}
+
+		$pdo->prepare('DELETE FROM case_sheet_voice_notes WHERE voice_note_id = ?')->execute([$id]);
+		$full = __DIR__ . '/../../' . self::VOICE_UPLOAD_BASE . $row['file_path'];
+		if (is_file($full)) { @unlink($full); }
+		echo json_encode(['success' => true]);
+		exit;
+	}
+
 	// ── Referral letter (print-to-PDF) ─────────────────────
 
 	public function generateReferralPdf(): void

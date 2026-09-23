@@ -288,6 +288,32 @@ load_language($_SESSION['language'] ?? 'en');
 						</div>
 					</div>
 
+					<!-- ── Doctor voice notes ── -->
+					<div class="card border-secondary mb-3" id="doctorVoiceCard">
+						<div class="card-header py-2 bg-light">
+							<span class="text-muted small text-uppercase font-weight-bold" style="letter-spacing:.05em;">
+								<i class="fas fa-microphone-alt mr-1 text-secondary"></i>Doctor Voice Notes
+							</span>
+						</div>
+						<div class="card-body py-2">
+							<div class="d-flex align-items-center flex-wrap">
+								<button type="button" data-vn-start data-vn-source="DOCTOR" class="btn btn-outline-danger btn-sm mr-2 mb-1"><i class="fas fa-microphone mr-1"></i>Record</button>
+								<button type="button" data-vn-stop data-vn-source="DOCTOR" class="btn btn-outline-secondary btn-sm mr-2 mb-1" disabled><i class="fas fa-stop mr-1"></i>Stop &amp; Upload</button>
+								<span data-vn-timer data-vn-source="DOCTOR" class="text-muted small mr-2">00:00</span>
+								<span data-vn-status data-vn-source="DOCTOR" class="small"></span>
+							</div>
+							<small class="form-text text-muted">Dictate findings, plan, or a note-to-self. Microphone permission required. Max 25 MB per clip.</small>
+							<div class="mt-2">
+								<div class="text-muted small text-uppercase mb-1"><i class="fas fa-user mr-1"></i>Patient recordings (from intake)</div>
+								<div data-vn-list data-vn-source="PATIENT"></div>
+							</div>
+							<div class="mt-2">
+								<div class="text-muted small text-uppercase mb-1"><i class="fas fa-user-md mr-1"></i>Doctor recordings</div>
+								<div data-vn-list data-vn-source="DOCTOR"></div>
+							</div>
+						</div>
+					</div>
+
 					<!-- ── Consulting doctors (multi-consult ACL) ── -->
 					<div class="card border-info mb-3" id="consultantsCard">
 						<div class="card-header py-2 bg-light">
@@ -2611,6 +2637,106 @@ load_language($_SESSION['language'] ?? 'en');
 				$submitBtn.prop('disabled', false).html('<i class="fas fa-paper-plane mr-1"></i><?= __('submit_order') ?>');
 			}
 		});
+	});
+})();
+</script>
+
+<!-- ── Voice notes recorder (patient + doctor playback) ─────────── -->
+<script>
+(function () {
+	var csrfToken     = <?= json_encode($_SESSION['csrf_token']) ?>;
+	var caseSheetId   = <?= (int)$csId ?>;
+	var currentUserId = <?= (int)($_SESSION['user_id'] ?? 0) ?>;
+	var canAdminDel   = <?= in_array($_SESSION['user_role'] ?? '', ['SUPER_ADMIN','ADMIN'], true) ? 'true' : 'false' ?>;
+
+	function el(source, kind) { return document.querySelector('[data-vn-' + kind + '][data-vn-source="' + source + '"]'); }
+	function esc(t)           { return $('<span>').text(t == null ? '' : t).html(); }
+	function fmtSecs(n)       { n = n|0; return (n<600?'0':'') + ((n/60|0)) + ':' + (n%60<10?'0':'') + (n%60); }
+
+	function renderNote(n) {
+		var canDel = (n.recorded_by_user_id == currentUserId) || canAdminDel;
+		var $wrap = $('<div class="voice-note-row d-flex align-items-center flex-wrap mb-2 p-2 border rounded"></div>').attr('data-vn-id', n.voice_note_id);
+		$wrap.append('<audio controls preload="none" src="' + esc(n.url) + '" class="mr-2 mb-1" style="height:32px;"></audio>');
+		$wrap.append('<small class="text-muted mr-2">' + esc(n.recorded_by || '') + ' · ' + esc(n.recorded_at) + (n.duration_secs ? ' · ' + fmtSecs(n.duration_secs) : '') + '</small>');
+		if (canDel) $wrap.append('<button type="button" class="btn btn-sm btn-link text-danger vn-delete p-0 ml-auto"><i class="fas fa-trash-alt"></i></button>');
+		if (n.transcript) $wrap.append('<div class="w-100 mt-1 small text-muted"><em>Transcript:</em> ' + esc(n.transcript) + '</div>');
+		return $wrap;
+	}
+
+	function loadList(source) {
+		var $list = $(el(source, 'list'));
+		if (!$list.length) return;
+		$.getJSON('intake.php?action=list-voice-notes&case_sheet_id=' + caseSheetId + '&source=' + source, function (r) {
+			$list.empty();
+			if (!r.success || !r.notes.length) { $list.append('<small class="text-muted">No recordings yet.</small>'); return; }
+			r.notes.forEach(function (n) { $list.append(renderNote(n)); });
+		});
+	}
+
+	$(document).on('click', '.vn-delete', function () {
+		var $row = $(this).closest('.voice-note-row');
+		var id = $row.data('vn-id');
+		if (!id || !confirm('Delete this recording?')) return;
+		$.post('intake.php?action=delete-voice-note', { csrf_token: csrfToken, voice_note_id: id }, function (r) {
+			if (r.success) $row.remove();
+		}, 'json');
+	});
+
+	function startRecorder(source) {
+		var $start = $(el(source, 'start'));
+		var $stop  = $(el(source, 'stop'));
+		var $timer = $(el(source, 'timer'));
+		var $status= $(el(source, 'status'));
+		var mediaRec, chunks = [], stream, startedAt, tick;
+
+		if (!navigator.mediaDevices || !window.MediaRecorder) {
+			$start.prop('disabled', true).attr('title', 'Recording not supported in this browser');
+			return;
+		}
+		$start.on('click', function () {
+			$status.text('').removeClass('text-danger text-success');
+			navigator.mediaDevices.getUserMedia({ audio: true }).then(function (s) {
+				stream = s; chunks = [];
+				try { mediaRec = new MediaRecorder(s, { mimeType: 'audio/webm' }); }
+				catch (e) { mediaRec = new MediaRecorder(s); }
+				mediaRec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+				mediaRec.onstop = function () {
+					var elapsed = Math.round((Date.now() - startedAt) / 1000);
+					var blob = new Blob(chunks, { type: mediaRec.mimeType || 'audio/webm' });
+					stream.getTracks().forEach(function (t) { t.stop(); });
+					clearInterval(tick); $timer.text('00:00');
+					var fd = new FormData();
+					fd.append('csrf_token', csrfToken);
+					fd.append('case_sheet_id', caseSheetId);
+					fd.append('source', source);
+					fd.append('duration_secs', String(elapsed));
+					fd.append('voice_file', blob, source.toLowerCase() + '_' + Date.now() + '.webm');
+					$status.text('Uploading…');
+					$.ajax({
+						url: 'intake.php?action=upload-voice-note',
+						method: 'POST', data: fd, processData: false, contentType: false, dataType: 'json',
+						success: function (r) {
+							if (!r.success) { $status.addClass('text-danger').text(r.message || 'Upload failed.'); return; }
+							$status.addClass('text-success').text('Saved.');
+							loadList(source);
+						},
+						error: function () { $status.addClass('text-danger').text('Upload failed.'); }
+					});
+				};
+				mediaRec.start(); startedAt = Date.now();
+				tick = setInterval(function () { $timer.text(fmtSecs(Math.round((Date.now() - startedAt) / 1000))); }, 500);
+				$start.prop('disabled', true); $stop.prop('disabled', false); $status.text('Recording…');
+			}).catch(function () { $status.addClass('text-danger').text('Microphone permission denied.'); });
+		});
+		$stop.on('click', function () {
+			if (mediaRec && mediaRec.state !== 'inactive') mediaRec.stop();
+			$stop.prop('disabled', true); $start.prop('disabled', false);
+		});
+	}
+
+	['PATIENT','DOCTOR'].forEach(function (src) {
+		if (el(src, 'start')) startRecorder(src);
+		if (el(src, 'list')) loadList(src);
 	});
 })();
 </script>
