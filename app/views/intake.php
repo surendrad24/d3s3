@@ -2101,20 +2101,31 @@ load_language($_SESSION['language'] ?? 'en');
 	});
 
 	// ── DOB → Age auto-calculation ─────────────────
-	var dobInput = document.getElementById('ve-date_of_birth');
-	if (dobInput) {
-		dobInput.addEventListener('change', function() {
-			var dob = this.value;
-			if (!dob) return;
-			var today = new Date();
-			var birth = new Date(dob);
-			var age = today.getFullYear() - birth.getFullYear();
-			var m = today.getMonth() - birth.getMonth();
-			if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-			var ageInput = document.getElementById('ve-age_years');
-			if (age >= 0 && age <= 150 && ageInput) ageInput.value = age;
+	function computeAgeFromDob(dobStr) {
+		if (!dobStr) return null;
+		var today = new Date();
+		var birth = new Date(dobStr);
+		if (isNaN(birth.getTime())) return null;
+		var age = today.getFullYear() - birth.getFullYear();
+		var m = today.getMonth() - birth.getMonth();
+		if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+		return (age >= 0 && age <= 150) ? age : null;
+	}
+	function wireDobAutoAge(dobId, ageId) {
+		var dobInput = document.getElementById(dobId);
+		var ageInput = document.getElementById(ageId);
+		if (!dobInput || !ageInput) return;
+		dobInput.addEventListener('change', function () {
+			var age = computeAgeFromDob(this.value);
+			if (age !== null) ageInput.value = age;
+		});
+		dobInput.addEventListener('input', function () {
+			var age = computeAgeFromDob(this.value);
+			if (age !== null) ageInput.value = age;
 		});
 	}
+	wireDobAutoAge('ve-date_of_birth', 've-age_years');
+	wireDobAutoAge('newDob', 'newAge');
 
 }());
 </script>
