@@ -51,6 +51,12 @@ switch ($action) {
 	case 'get-lab-orders':
 		$controller->getLabOrders();
 		break;
+	case 'upload-pelvic-usg':
+		$controller->uploadPelvicUsg();
+		break;
+	case 'pelvic-usg-file':
+		$controller->downloadPelvicUsg();
+		break;
 	default:
 		$controller->intake();
 		break;

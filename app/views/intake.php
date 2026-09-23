@@ -1103,7 +1103,7 @@ load_language($_SESSION['language'] ?? 'en');
 												<div class="col-md-3 mb-3"><label><?= __('adnexa') ?></label><input type="text" class="form-control" name="exam_pelvic_adnexa" data-field="exam_pelvic_adnexa" value="<?= htmlspecialchars($examData['exam_pelvic_adnexa'] ?? '') ?>" /></div>
 											</div>
 											<div class="row">
-												<div class="col-12">
+												<div class="col-md-6">
 													<label class="d-block"><?= __('pelvic_exam_diagram') ?></label>
 													<button type="button" class="btn btn-outline-primary btn-sm" onclick="openDiagram('pelvic','diag_pelvic','pelvicDiagramPreview')">
 														<i class="fas fa-draw-polygon mr-1"></i><?= !empty($cs['diag_pelvic']) ? __('edit') : __('draw') ?> <?= __('pelvic_diagram') ?>
@@ -1112,6 +1112,19 @@ load_language($_SESSION['language'] ?? 'en');
 														<img src="" data-diag-field="diag_pelvic" data-diag-type="pelvic" alt="Pelvic Examination Diagram" class="img-thumbnail diagram-preview-img">
 													</div>
 													<input type="hidden" id="diag_pelvic" value="<?= htmlspecialchars($cs['diag_pelvic'] ?? '') ?>">
+												</div>
+												<div class="col-md-6">
+													<label class="d-block">Ultrasound (USG) Image</label>
+													<input type="file" id="pelvicUsgFile" accept="image/jpeg,image/png,image/webp,application/pdf" class="form-control-file" />
+													<small class="form-text text-muted">Optional. JPG, PNG, WebP or PDF. Max 15 MB.</small>
+													<div id="pelvicUsgStatus" class="mt-2">
+														<?php if (!empty($cs['pelvic_usg_image_path'])): ?>
+															<a href="intake.php?action=pelvic-usg-file&case_sheet_id=<?= (int)$csId ?>" target="_blank" class="btn btn-sm btn-outline-info">
+																<i class="fas fa-file-image mr-1"></i>View current USG (<?= htmlspecialchars($cs['pelvic_usg_image_name'] ?? 'file') ?>)
+															</a>
+														<?php endif; ?>
+													</div>
+													<div id="pelvicUsgError" class="text-danger small mt-1"></div>
 												</div>
 											</div>
 										</div>
@@ -1464,6 +1477,32 @@ load_language($_SESSION['language'] ?? 'en');
 			var value = $(this).val();
 			clearTimeout(saveTimeout[field]);
 			saveTimeout[field] = setTimeout(function () { autoSave(field, value); }, 1000);
+		});
+
+		// Pelvic USG upload: auto-upload on file selection
+		$('#pelvicUsgFile').on('change', function () {
+			var f = this.files && this.files[0];
+			var $err = $('#pelvicUsgError').text('');
+			var $status = $('#pelvicUsgStatus');
+			if (!f) return;
+			var fd = new FormData();
+			fd.append('csrf_token', csrfToken);
+			fd.append('case_sheet_id', caseSheetId);
+			fd.append('usg_image', f);
+			$status.html('<i class="fas fa-spinner fa-spin"></i> Uploading&hellip;');
+			$.ajax({
+				url: 'intake.php?action=upload-pelvic-usg',
+				method: 'POST', data: fd, processData: false, contentType: false, dataType: 'json',
+				success: function (r) {
+					if (!r.success) {
+						$err.text(r.message || 'Upload failed.');
+						$status.empty();
+						return;
+					}
+					$status.html('<a href="' + r.url + '" target="_blank" class="btn btn-sm btn-outline-info"><i class="fas fa-file-image mr-1"></i>View current USG (' + $('<span>').text(r.name).html() + ')</a>');
+				},
+				error: function () { $err.text('Upload failed.'); $status.empty(); }
+			});
 		});
 
 		// Head & Neck: recolor notes + status select when severity changes

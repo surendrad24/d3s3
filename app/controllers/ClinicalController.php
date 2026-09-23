@@ -1126,6 +1126,106 @@ class ClinicalController
 		exit;
 	}
 
+	// ── Pelvic ultrasound (USG) image upload / download ─────
+
+	private const USG_UPLOAD_BASE = 'uploads/case_sheets/';
+	private const USG_MAX_BYTES   = 15 * 1024 * 1024; // 15 MB
+	private const USG_ALLOWED_MIME = [
+		'image/jpeg' => 'jpg', 'image/png' => 'png',
+		'image/webp' => 'webp', 'application/pdf' => 'pdf',
+	];
+
+	public function uploadPelvicUsg(): void
+	{
+		$this->requireClinicalRole();
+		header('Content-Type: application/json');
+
+		if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+			echo json_encode(['success' => false, 'message' => 'POST required']); exit;
+		}
+		if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+			echo json_encode(['success' => false, 'message' => 'Invalid security token.']); exit;
+		}
+		$caseSheetId = (int)($_POST['case_sheet_id'] ?? 0);
+		if ($caseSheetId <= 0) {
+			echo json_encode(['success' => false, 'message' => 'Missing case sheet.']); exit;
+		}
+		if (!isset($_FILES['usg_image']) || $_FILES['usg_image']['error'] === UPLOAD_ERR_NO_FILE) {
+			echo json_encode(['success' => false, 'message' => 'No file uploaded.']); exit;
+		}
+
+		$file = $_FILES['usg_image'];
+		if ($file['error'] !== UPLOAD_ERR_OK) {
+			echo json_encode(['success' => false, 'message' => 'Upload failed (code ' . $file['error'] . ').']); exit;
+		}
+		if ($file['size'] > self::USG_MAX_BYTES) {
+			echo json_encode(['success' => false, 'message' => 'File too large. Max 15 MB.']); exit;
+		}
+		$finfo = new finfo(FILEINFO_MIME_TYPE);
+		$mime  = $finfo->file($file['tmp_name']);
+		if (!isset(self::USG_ALLOWED_MIME[$mime])) {
+			echo json_encode(['success' => false, 'message' => 'Unsupported file type. Allowed: JPG, PNG, WebP, PDF.']); exit;
+		}
+		$ext    = self::USG_ALLOWED_MIME[$mime];
+		$uuid   = bin2hex(random_bytes(16));
+		$subdir = date('Y/m');
+		$rel    = $subdir . '/' . $uuid . '.' . $ext;
+		$dir    = __DIR__ . '/../../' . self::USG_UPLOAD_BASE . $subdir;
+		if (!is_dir($dir) && !mkdir($dir, 0755, true)) {
+			echo json_encode(['success' => false, 'message' => 'Could not create upload directory.']); exit;
+		}
+		if (!move_uploaded_file($file['tmp_name'], $dir . '/' . $uuid . '.' . $ext)) {
+			echo json_encode(['success' => false, 'message' => 'Could not save the uploaded file.']); exit;
+		}
+
+		$pdo = getDBConnection();
+		$pdo->prepare(
+			'UPDATE case_sheets
+			    SET pelvic_usg_image_path = ?, pelvic_usg_image_name = ?
+			  WHERE case_sheet_id = ?'
+		)->execute([$rel, $file['name'], $caseSheetId]);
+
+		echo json_encode([
+			'success' => true,
+			'url'     => 'intake.php?action=pelvic-usg-file&case_sheet_id=' . $caseSheetId,
+			'name'    => $file['name'],
+		]);
+		exit;
+	}
+
+	public function downloadPelvicUsg(): void
+	{
+		if (!can($_SESSION['user_role'] ?? '', 'case_sheets')) {
+			http_response_code(403); exit('Access denied.');
+		}
+		$caseSheetId = (int)($_GET['case_sheet_id'] ?? 0);
+		if ($caseSheetId <= 0) { http_response_code(404); exit; }
+
+		$pdo  = getDBConnection();
+		$stmt = $pdo->prepare('SELECT pelvic_usg_image_path, pelvic_usg_image_name FROM case_sheets WHERE case_sheet_id = ?');
+		$stmt->execute([$caseSheetId]);
+		$row  = $stmt->fetch();
+		if (!$row || empty($row['pelvic_usg_image_path'])) {
+			http_response_code(404); exit('File not found.');
+		}
+		$rel = $row['pelvic_usg_image_path'];
+		if (strpos($rel, '..') !== false) { http_response_code(400); exit; }
+		$full = __DIR__ . '/../../' . self::USG_UPLOAD_BASE . $rel;
+		if (!is_file($full)) { http_response_code(404); exit('File missing on server.'); }
+
+		$finfo = new finfo(FILEINFO_MIME_TYPE);
+		$mime  = $finfo->file($full) ?: 'application/octet-stream';
+		$name  = $row['pelvic_usg_image_name'] ?: basename($full);
+
+		header('Content-Type: ' . $mime);
+		header('Content-Disposition: inline; filename="' . rawurlencode($name) . '"');
+		header('Content-Length: ' . (string)filesize($full));
+		header('X-Content-Type-Options: nosniff');
+		header('Cache-Control: private, max-age=3600');
+		readfile($full);
+		exit;
+	}
+
 	// ── Role guards ─────────────────────────────────────────
 
 	private function requireClinicalRole(): void
