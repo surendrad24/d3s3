@@ -232,6 +232,12 @@ if ($_navCanPatientData && !$isPortalMessagesPage) {
 						<?php endif; ?>
 					</a>
 				</li>
+				<li class="nav-item">
+					<a href="whatsapp.php" class="nav-link <?= (strpos($currentPage, 'whatsapp.php') !== false) ? 'active' : '' ?>">
+						<i class="nav-icon fab fa-whatsapp text-success"></i>
+						<p>WhatsApp</p>
+					</a>
+				</li>
 				<?php endif; ?>
 
 				<!-- Tasks – requires tasks read -->

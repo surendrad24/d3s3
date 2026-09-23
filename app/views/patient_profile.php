@@ -415,6 +415,57 @@ $_backLabel = !empty($_backParams) ? 'Back to Results' : 'Back to Patients';
 				</div>
 				<?php endif; ?>
 
+				<!-- WhatsApp panel -->
+				<div class="card card-outline card-success mb-3">
+					<div class="card-header">
+						<h3 class="card-title"><i class="fab fa-whatsapp mr-2"></i>WhatsApp</h3>
+						<div class="card-tools">
+							<button type="button" class="btn btn-sm btn-success" data-toggle="modal" data-target="#modalWhatsApp">
+								<i class="fas fa-paper-plane mr-1"></i>Send message
+							</button>
+						</div>
+					</div>
+					<div class="card-body p-0">
+						<div id="whatsappHistory" class="p-3 text-muted small">Loading…</div>
+					</div>
+				</div>
+
+				<!-- WhatsApp compose modal -->
+				<div class="modal fade" id="modalWhatsApp" tabindex="-1" role="dialog" aria-hidden="true">
+					<div class="modal-dialog" role="document">
+						<div class="modal-content">
+							<div class="modal-header">
+								<h5 class="modal-title"><i class="fab fa-whatsapp text-success mr-2"></i>Send WhatsApp to <?= htmlspecialchars($_fullName) ?></h5>
+								<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+							</div>
+							<div class="modal-body">
+								<div id="whatsappFormAlert"></div>
+								<div class="form-group">
+									<label class="small text-muted mb-1">To</label>
+									<input type="text" id="whatsappTo" class="form-control form-control-sm"
+									       value="<?= htmlspecialchars($patient['phone_e164'] ?? '') ?>" />
+								</div>
+								<div class="form-group">
+									<label class="small text-muted mb-1">Template name (optional)</label>
+									<input type="text" id="whatsappTemplate" class="form-control form-control-sm"
+									       placeholder="e.g. appointment_reminder" />
+									<small class="text-muted">Leave blank to send a free-form message (only allowed inside the 24-hour customer window).</small>
+								</div>
+								<div class="form-group">
+									<label class="small text-muted mb-1">Body</label>
+									<textarea id="whatsappBody" class="form-control" rows="4" maxlength="4000"></textarea>
+								</div>
+							</div>
+							<div class="modal-footer">
+								<button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Cancel</button>
+								<button type="button" id="whatsappSendBtn" class="btn btn-success btn-sm">
+									<i class="fas fa-paper-plane mr-1"></i>Send
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+
 				<!-- Modal: Create portal account -->
 				<?php if ($canManagePortal && !$portalAccount): ?>
 				<div class="modal fade" id="modalCreatePortal" tabindex="-1">
@@ -1245,6 +1296,89 @@ $(function () {
 	});
 
 });
+</script>
+<script>
+/* WhatsApp panel — send + history */
+(function () {
+	var patientId = <?= (int)$patient['patient_id'] ?>;
+	var csrf      = <?= json_encode($_SESSION['csrf_token']) ?>;
+
+	function esc(t) { return $('<span>').text(t == null ? '' : t).html(); }
+
+	function statusBadge(s) {
+		var color = { QUEUED:'secondary', SENT:'info', DELIVERED:'primary', READ:'success', FAILED:'danger' }[s] || 'secondary';
+		return '<span class="badge badge-' + color + '">' + esc(s) + '</span>';
+	}
+
+	function loadHistory() {
+		var $box = $('#whatsappHistory');
+		$box.text('Loading…');
+		$.getJSON('whatsapp.php?action=history&patient_id=' + patientId, function (r) {
+			if (!r.success) { $box.text('Could not load history.'); return; }
+			var html = '';
+			if (!r.configured) {
+				html += '<div class="alert alert-warning alert-sm mb-3 py-2 small mx-3 mt-3">' +
+				        '<i class="fas fa-exclamation-triangle mr-1"></i>' +
+				        'WhatsApp gateway not configured. Messages will be logged but not delivered.</div>';
+			}
+			if (!r.messages.length) {
+				html += '<div class="p-3 text-muted small">No WhatsApp messages yet.</div>';
+			} else {
+				html += '<div class="table-responsive"><table class="table table-sm mb-0"><thead class="thead-light"><tr>' +
+				        '<th class="small">Sent</th><th class="small">Body</th><th class="small">Status</th><th class="small">By</th>' +
+				        '</tr></thead><tbody>';
+				r.messages.forEach(function (m) {
+					html += '<tr>' +
+					        '<td class="small text-nowrap">' + esc(m.sent_at) + '</td>' +
+					        '<td class="small">' + esc(m.body).replace(/\n/g,'<br>') +
+					        (m.error_message ? '<div class="text-danger small mt-1">' + esc(m.error_message) + '</div>' : '') +
+					        '</td>' +
+					        '<td>' + statusBadge(m.status) + '</td>' +
+					        '<td class="small">' + esc(m.sent_by) + '</td>' +
+					        '</tr>';
+				});
+				html += '</tbody></table></div>';
+			}
+			$box.html(html);
+		}).fail(function () { $box.text('Could not load history.'); });
+	}
+
+	$('#modalWhatsApp').on('shown.bs.modal', function () {
+		$('#whatsappFormAlert').empty();
+		$('#whatsappBody').focus();
+	});
+
+	$('#whatsappSendBtn').on('click', function () {
+		var $btn = $(this);
+		var to   = $('#whatsappTo').val().trim();
+		var body = $('#whatsappBody').val().trim();
+		var tpl  = $('#whatsappTemplate').val().trim();
+		if (!body && !tpl) {
+			$('#whatsappFormAlert').html('<div class="alert alert-danger py-1 small">Message body or template name is required.</div>');
+			return;
+		}
+		$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Sending…');
+		$.post('whatsapp.php?action=send', {
+			csrf_token: csrf, patient_id: patientId,
+			to_phone: to, body: body, template_name: tpl
+		}, function (r) {
+			$btn.prop('disabled', false).html('<i class="fas fa-paper-plane mr-1"></i>Send');
+			if (r.success) {
+				$('#modalWhatsApp').modal('hide');
+				$('#whatsappBody').val('');
+				loadHistory();
+			} else {
+				$('#whatsappFormAlert').html('<div class="alert alert-danger py-1 small">' + esc(r.error || 'Send failed.') + '</div>');
+				loadHistory();
+			}
+		}, 'json').fail(function () {
+			$btn.prop('disabled', false).html('<i class="fas fa-paper-plane mr-1"></i>Send');
+			$('#whatsappFormAlert').html('<div class="alert alert-danger py-1 small">Request failed.</div>');
+		});
+	});
+
+	loadHistory();
+})();
 </script>
 <script src="assets/js/password-toggle.js"></script>
 </body>
