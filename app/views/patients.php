@@ -253,17 +253,16 @@ $(function () {
 	var activeRow    = -1;   // keyboard-nav index (-1 = none highlighted)
 	var currentXhr   = null; // in-flight AJAX request
 
-	/* ── Pre-fill from URL params and auto-search (restores results after  ── */
-	/* ── hitting Back from a patient profile page)                         ── */
+	/* ── Pre-fill from URL params, then always run a search. With no      ── */
+	/* ── filters the endpoint returns the recent-patients list so the    ── */
+	/* ── page loads showing existing patients, not a blank state.        ── */
 	(function () {
 		var urlParams = new URLSearchParams(window.location.search);
 		var prefilledName = urlParams.get('name') || '';
 		var prefilledDob  = urlParams.get('dob')  || '';
 		if (prefilledName) $nameInput.val(prefilledName);
 		if (prefilledDob)  $dobInput.val(prefilledDob);
-		if (prefilledName || prefilledDob) {
-			runSearch();
-		}
+		runSearch();
 	}());
 
 	/* ── Auto-focus name field ───────────────────────────────────────────── */
@@ -287,13 +286,13 @@ $(function () {
 		runSearch();
 	});
 
-	/* ── Clear button ────────────────────────────────────────────────────── */
+	/* ── Clear button — resets to the full recent-patients list ─────────── */
 	$clearBtn.on('click', function () {
 		$nameInput.val('');
 		$dobInput.val('');
 		activeRow = -1;
 		$status.text('');
-		showIdle();
+		runSearch();
 		$nameInput.focus();
 	});
 
@@ -330,8 +329,8 @@ $(function () {
 		var name = $nameInput.val().trim();
 		var dob  = $dobInput.val().trim();
 
-		// Need at least one criterion, and name must be ≥2 chars if it's all we have
-		if (name === '' && dob === '') { showIdle(); return; }
+		// Empty query is valid — the endpoint returns the recent-patients list.
+		// Once the user starts typing a name, require ≥2 chars to avoid churn.
 		if (name !== '' && name.length < 2 && dob === '') {
 			$status.text('Type at least 2 characters…');
 			return;
@@ -392,6 +391,7 @@ $(function () {
 			var hint = '';
 			if (name && !dob)  hint = 'Try adding a date of birth to narrow the search.';
 			if (dob  && !name) hint = 'Try adding part of the patient\u2019s name.';
+			if (!name && !dob) hint = 'No patients have been registered yet.';
 
 			$results.html(
 				'<div class="state-panel">' +
@@ -404,9 +404,17 @@ $(function () {
 		}
 
 		/* ── Status line ─────────────────────────────── */
-		var capMsg = count >= 50
-			? count + ' results (max shown \u2014 add D.O.B. to narrow)'
-			: count + ' patient' + (count !== 1 ? 's' : '') + ' found';
+		var isFiltered = !!(name || dob);
+		var capMsg;
+		if (count >= 50) {
+			capMsg = isFiltered
+				? count + ' results (max shown \u2014 add D.O.B. to narrow)'
+				: 'Showing the 50 most recent patients \u2014 use search to find others';
+		} else {
+			capMsg = isFiltered
+				? count + ' patient' + (count !== 1 ? 's' : '') + ' found'
+				: count + ' patient' + (count !== 1 ? 's' : '') + ' in the system';
+		}
 		$status.text(capMsg);
 
 		/* ── Result meta bar ─────────────────────────── */

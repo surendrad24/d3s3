@@ -170,13 +170,8 @@ class PatientController
 		$name = trim($_GET['name'] ?? '');
 		$dob  = trim($_GET['dob']  ?? '');
 
-		// Must have at least one meaningful criterion
-		if ($name === '' && $dob === '') {
-			echo json_encode([]);
-			exit;
-		}
-
-		// For name-only searches require ≥2 chars to avoid huge unfiltered dumps
+		// For name-only searches, require ≥2 chars once the user starts typing;
+		// an empty query is fine — we return the recent-patients list.
 		if ($name !== '' && mb_strlen($name) < 2 && $dob === '') {
 			echo json_encode([]);
 			exit;
@@ -199,12 +194,13 @@ class PatientController
 			$params[]     = $dob;
 		}
 
-		if (empty($conditions)) {
-			echo json_encode([]);
-			exit;
-		}
+		$where = empty($conditions) ? '1 = 1' : implode(' AND ', $conditions);
 
-		$where = implode(' AND ', $conditions);
+		// With no filters, sort by most-recently-created so staff see the fresh
+		// patients first. With filters, alphabetical is more useful.
+		$orderBy = empty($conditions)
+			? 'p.created_at DESC, p.patient_id DESC'
+			: 'p.last_name, p.first_name';
 
 		$stmt = $pdo->prepare(
 			"SELECT p.patient_id, p.patient_code,
@@ -219,7 +215,7 @@ class PatientController
 			   LEFT JOIN case_sheets cs ON cs.patient_id = p.patient_id
 			  WHERE {$where}
 			  GROUP BY p.patient_id
-			  ORDER BY p.last_name, p.first_name
+			  ORDER BY {$orderBy}
 			  LIMIT 50"
 		);
 		$stmt->execute($params);
