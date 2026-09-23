@@ -706,6 +706,11 @@ class ClinicalController
 		$source         = $_POST['consultation_source'] ?? 'WALK_IN';
 		$referredBy     = trim($_POST['referred_by'] ?? '');
 		$referredCsId   = (int)($_POST['referred_by_case_sheet_id'] ?? 0);
+		$riskLevel      = $_POST['risk_level'] ?? '';
+		$validRisk      = ['LOW', 'MEDIUM', 'HIGH'];
+		if (!in_array($riskLevel, $validRisk, true)) {
+			$riskLevel = null;
+		}
 
 		if ($patientId <= 0) {
 			return 'Please select a patient.';
@@ -748,8 +753,8 @@ class ClinicalController
 		$stmt = $pdo->prepare(
 			'INSERT INTO case_sheets
 			    (patient_id, visit_type, consultation_source, referred_by, referred_by_case_sheet_id,
-			     status, created_by_user_id, created_by_name, chief_complaint)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+			     status, created_by_user_id, created_by_name, chief_complaint, risk_level)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 		);
 		$stmt->execute([
 			$patientId,
@@ -761,6 +766,7 @@ class ClinicalController
 			$_SESSION['user_id'],
 			trim($_SESSION['user_name'] ?? ''),
 			$chiefComplaint,
+			$riskLevel,
 		]);
 
 		$newId = (int)$pdo->lastInsertId();

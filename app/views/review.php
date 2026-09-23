@@ -260,6 +260,14 @@ load_language($_SESSION['language'] ?? 'en');
 									<?php endif; ?>
 								</div>
 								<?php endif; ?>
+								<?php if (!empty($cs['risk_level'])): ?>
+								<div class="col-auto">
+									<?php
+									$_riskCls = ['LOW'=>'badge-success','MEDIUM'=>'badge-warning','HIGH'=>'badge-danger'][$cs['risk_level']] ?? 'badge-secondary';
+									?>
+									<span class="badge <?= $_riskCls ?>" title="Risk level"><?= htmlspecialchars($cs['risk_level']) ?> RISK</span>
+								</div>
+								<?php endif; ?>
 								<div class="col-auto">
 									<span class="text-muted small mr-1"><?= __('chief_complaint') ?>:</span>
 									<strong class="small"><?= htmlspecialchars($cs['chief_complaint'] ?? '—') ?></strong>

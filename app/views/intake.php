@@ -277,6 +277,20 @@ load_language($_SESSION['language'] ?? 'en');
 									</div>
 								</div>
 							</div>
+							<div class="row">
+								<div class="col-md-4">
+									<div class="form-group">
+										<label for="riskLevel">Risk Level</label>
+										<select class="form-control" id="riskLevel" name="risk_level">
+											<option value="">Not triaged</option>
+											<option value="LOW">Low</option>
+											<option value="MEDIUM">Medium</option>
+											<option value="HIGH">High &mdash; prioritise</option>
+										</select>
+										<small class="form-text text-muted">HIGH-risk cases jump to the top of the doctor's queue.</small>
+									</div>
+								</div>
+							</div>
 
 							<div class="row" id="referralFields" style="display:none">
 								<div class="col-md-6">

@@ -61,6 +61,7 @@ $stmt = $pdo->prepare(
 	        cs.status,
 	        cs.visit_type,
 	        cs.chief_complaint,
+	        cs.risk_level,
 	        cs.visit_datetime,
 	        cs.queue_position,
 	        cs.assigned_doctor_name,
@@ -80,7 +81,9 @@ $stmt = $pdo->prepare(
 	   LEFT JOIN users ad ON ad.user_id   = cs.assigned_doctor_user_id
 	  WHERE cs.status IN ($placeholders)
 	  $doctorFilter
-	  ORDER BY COALESCE(cs.queue_position, 999999) ASC, cs.visit_datetime ASC"
+	  ORDER BY (cs.risk_level = 'HIGH') DESC,
+	           COALESCE(cs.queue_position, 999999) ASC,
+	           cs.visit_datetime ASC"
 );
 $stmt->execute($params);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -102,6 +105,7 @@ foreach ($rows as $r) {
 		'patient_id'     => (int)$r['patient_id'],
 		'status'         => $r['status'],
 		'visit_type'     => $r['visit_type'],
+		'risk_level'     => $r['risk_level'] ?? null,
 		'chief_complaint'=> $r['chief_complaint'] ?? '',
 		'visit_time'     => date('g:i A', strtotime($r['visit_datetime'])),
 		'queue_position' => $r['queue_position'] !== null ? (float)$r['queue_position'] : null,
