@@ -252,13 +252,52 @@ load_language($_SESSION['language'] ?? 'en');
 										</select>
 									</div>
 								</div>
-								<div class="col-md-8">
+								<div class="col-md-4">
+									<div class="form-group">
+										<label for="consultationSource">Source of Consultation <span class="text-danger">*</span></label>
+										<select class="form-control" id="consultationSource" name="consultation_source" required>
+											<option value="WALK_IN" selected>Walk-in</option>
+											<option value="CALL">Call</option>
+											<option value="CAMP">Camp</option>
+											<option value="REFERRAL">Referral</option>
+											<option value="FOLLOW_UP">Follow-up</option>
+											<option value="OTHER">Other</option>
+										</select>
+									</div>
+								</div>
+								<div class="col-md-4">
 									<div class="form-group">
 										<label for="chiefComplaint"><?= __('chief_complaint') ?> <span class="text-danger">*</span></label>
 										<input type="text" class="form-control" id="chiefComplaint" name="chief_complaint" maxlength="255" required placeholder="<?= __('chief_complaint_placeholder') ?>" />
 									</div>
 								</div>
 							</div>
+
+							<div class="row" id="referralFields" style="display:none">
+								<div class="col-md-6">
+									<div class="form-group">
+										<label for="referredBy">Referred by</label>
+										<input type="text" class="form-control" id="referredBy" name="referred_by" maxlength="255" placeholder="Doctor / clinic / person's name" />
+									</div>
+								</div>
+								<div class="col-md-6">
+									<div class="form-group">
+										<label for="referredByCaseSheetId">Referred from an existing case sheet (optional)</label>
+										<input type="number" min="1" class="form-control" id="referredByCaseSheetId" name="referred_by_case_sheet_id" placeholder="Case sheet ID, if a previous patient referred them" />
+										<small class="form-text text-muted">Leave blank unless the referral came from another patient of ours.</small>
+									</div>
+								</div>
+							</div>
+							<script>
+								(function () {
+									var srcEl  = document.getElementById('consultationSource');
+									var refBox = document.getElementById('referralFields');
+									if (!srcEl || !refBox) return;
+									function sync() { refBox.style.display = (srcEl.value === 'REFERRAL') ? '' : 'none'; }
+									srcEl.addEventListener('change', sync);
+									sync();
+								}());
+							</script>
 						</div>
 					</div>
 

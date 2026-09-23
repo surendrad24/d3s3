@@ -251,6 +251,15 @@ load_language($_SESSION['language'] ?? 'en');
 									<span class="text-muted small mr-1"><?= __('type_label') ?>:</span>
 									<strong class="small"><?= htmlspecialchars(['CAMP'=>__('visit_camp'),'CLINIC'=>__('visit_clinic'),'FOLLOW_UP'=>__('visit_follow_up'),'EMERGENCY'=>__('visit_emergency'),'OTHER'=>__('other')][$cs['visit_type']] ?? htmlspecialchars($cs['visit_type'])) ?></strong>
 								</div>
+								<?php if (!empty($cs['consultation_source'])): ?>
+								<div class="col-auto">
+									<span class="text-muted small mr-1">Source:</span>
+									<strong class="small"><?= htmlspecialchars(['WALK_IN'=>'Walk-in','CALL'=>'Call','CAMP'=>'Camp','REFERRAL'=>'Referral','FOLLOW_UP'=>'Follow-up','OTHER'=>'Other'][$cs['consultation_source']] ?? $cs['consultation_source']) ?></strong>
+									<?php if ($cs['consultation_source'] === 'REFERRAL' && !empty($cs['referred_by'])): ?>
+										<span class="text-muted small ml-1">by <?= htmlspecialchars($cs['referred_by']) ?></span>
+									<?php endif; ?>
+								</div>
+								<?php endif; ?>
 								<div class="col-auto">
 									<span class="text-muted small mr-1"><?= __('chief_complaint') ?>:</span>
 									<strong class="small"><?= htmlspecialchars($cs['chief_complaint'] ?? '—') ?></strong>

@@ -689,6 +689,9 @@ class ClinicalController
 		$patientId      = (int)($_POST['patient_id'] ?? 0);
 		$visitType      = $_POST['visit_type'] ?? '';
 		$chiefComplaint = trim($_POST['chief_complaint'] ?? '');
+		$source         = $_POST['consultation_source'] ?? 'WALK_IN';
+		$referredBy     = trim($_POST['referred_by'] ?? '');
+		$referredCsId   = (int)($_POST['referred_by_case_sheet_id'] ?? 0);
 
 		if ($patientId <= 0) {
 			return 'Please select a patient.';
@@ -697,6 +700,11 @@ class ClinicalController
 		$validTypes = ['CAMP', 'CLINIC', 'FOLLOW_UP', 'EMERGENCY', 'OTHER'];
 		if (!in_array($visitType, $validTypes, true)) {
 			return 'Please select a valid visit type.';
+		}
+
+		$validSources = ['WALK_IN', 'CALL', 'CAMP', 'REFERRAL', 'FOLLOW_UP', 'OTHER'];
+		if (!in_array($source, $validSources, true)) {
+			$source = 'WALK_IN';
 		}
 
 		if ($chiefComplaint === '') {
@@ -710,14 +718,31 @@ class ClinicalController
 			return 'Patient not found.';
 		}
 
+		// Only keep referral fields when source is REFERRAL; validate referenced case sheet exists.
+		if ($source !== 'REFERRAL') {
+			$referredBy   = '';
+			$referredCsId = 0;
+		}
+		if ($referredCsId > 0) {
+			$stmt = $pdo->prepare('SELECT case_sheet_id FROM case_sheets WHERE case_sheet_id = ?');
+			$stmt->execute([$referredCsId]);
+			if (!$stmt->fetch()) {
+				$referredCsId = 0;
+			}
+		}
+
 		$stmt = $pdo->prepare(
 			'INSERT INTO case_sheets
-			    (patient_id, visit_type, status, created_by_user_id, created_by_name, chief_complaint)
-			 VALUES (?, ?, ?, ?, ?, ?)'
+			    (patient_id, visit_type, consultation_source, referred_by, referred_by_case_sheet_id,
+			     status, created_by_user_id, created_by_name, chief_complaint)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
 		);
 		$stmt->execute([
 			$patientId,
 			$visitType,
+			$source,
+			$referredBy !== '' ? $referredBy : null,
+			$referredCsId > 0 ? $referredCsId : null,
 			'INTAKE_IN_PROGRESS',
 			$_SESSION['user_id'],
 			trim($_SESSION['user_name'] ?? ''),
