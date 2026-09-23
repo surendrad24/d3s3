@@ -23,6 +23,15 @@ switch ($action) {
 	case 'close':
 		$controller->closeCaseSheet();
 		break;
+	case 'add-consultant':
+		$controller->addConsultant();
+		break;
+	case 'remove-consultant':
+		$controller->removeConsultant();
+		break;
+	case 'search-doctors':
+		$controller->searchDoctors();
+		break;
 	default:
 		$controller->doctorReview();
 		break;

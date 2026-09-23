@@ -288,6 +288,45 @@ load_language($_SESSION['language'] ?? 'en');
 						</div>
 					</div>
 
+					<!-- ── Consulting doctors (multi-consult ACL) ── -->
+					<div class="card border-info mb-3" id="consultantsCard">
+						<div class="card-header py-2 bg-light">
+							<span class="text-muted small text-uppercase font-weight-bold" style="letter-spacing:.05em;">
+								<i class="fas fa-user-md mr-1 text-info"></i>Consulting Doctors
+							</span>
+							<span class="ml-2 small text-muted">Primary: <strong><?= htmlspecialchars($cs['assigned_doctor_name'] ?? 'You') ?></strong></span>
+						</div>
+						<div class="card-body py-2">
+							<div id="consultantList" class="d-flex flex-wrap align-items-center">
+								<?php if (empty($consultants)): ?>
+									<span id="noConsultantsMsg" class="text-muted small mr-3">No other doctors consulting on this case.</span>
+								<?php else: foreach ($consultants as $c): ?>
+									<span class="badge badge-pill badge-info p-2 mr-2 mb-1" data-consultant-id="<?= (int)$c['doctor_user_id'] ?>">
+										<i class="fas fa-user-md mr-1"></i><?= htmlspecialchars($c['name']) ?>
+										<?php if (!empty($c['role_note'])): ?>
+											<small class="ml-1 text-white-50">(<?= htmlspecialchars($c['role_note']) ?>)</small>
+										<?php endif; ?>
+										<?php if (!empty($isPrimaryDoctor) || (int)$c['doctor_user_id'] === (int)$_SESSION['user_id']): ?>
+											<a href="#" class="text-white ml-2 removeConsultantBtn" data-doctor-id="<?= (int)$c['doctor_user_id'] ?>" title="Remove consultant"><i class="fas fa-times"></i></a>
+										<?php endif; ?>
+									</span>
+								<?php endforeach; endif; ?>
+							</div>
+							<?php if (!empty($isPrimaryDoctor)): ?>
+							<div class="form-inline mt-2" id="addConsultantForm">
+								<input type="text" id="consultantSearch" class="form-control form-control-sm mr-2" placeholder="Search doctor by name or email" autocomplete="off" style="min-width:260px;" />
+								<input type="hidden" id="consultantDoctorId" value="" />
+								<input type="text" id="consultantRoleNote" class="form-control form-control-sm mr-2" placeholder="Role / note (optional)" style="min-width:200px;" />
+								<button type="button" id="btnAddConsultant" class="btn btn-sm btn-outline-info" disabled>
+									<i class="fas fa-user-plus mr-1"></i>Add consultant
+								</button>
+								<span id="consultantSearchResults" class="w-100 mt-1"></span>
+								<small id="consultantMsg" class="w-100 text-danger small"></small>
+							</div>
+							<?php endif; ?>
+						</div>
+					</div>
+
 					<div class="tab-content" id="reviewTabContent">
 
 							<!-- ══════════════════════════════════════════════════ -->
@@ -2566,6 +2605,101 @@ load_language($_SESSION['language'] ?? 'en');
 			error: function () {
 				$error.text('Server error. Please try again.').removeClass('d-none');
 				$submitBtn.prop('disabled', false).html('<i class="fas fa-paper-plane mr-1"></i><?= __('submit_order') ?>');
+			}
+		});
+	});
+})();
+</script>
+
+<!-- ── Multi-consult ACL: add/remove consulting doctors ─────────── -->
+<script>
+(function () {
+	var csrfToken   = <?= json_encode($_SESSION['csrf_token']) ?>;
+	var caseSheetId = <?= (int)$csId ?>;
+	var $search     = $('#consultantSearch');
+	var $results    = $('#consultantSearchResults');
+	var $docId      = $('#consultantDoctorId');
+	var $roleNote   = $('#consultantRoleNote');
+	var $btnAdd     = $('#btnAddConsultant');
+	var $msg        = $('#consultantMsg');
+	var $list       = $('#consultantList');
+	var searchT;
+
+	function escapeHtml(s) { return $('<span>').text(s == null ? '' : s).html(); }
+
+	if ($search.length) {
+		$search.on('input', function () {
+			var q = $search.val().trim();
+			$docId.val('');
+			$btnAdd.prop('disabled', true);
+			clearTimeout(searchT);
+			if (q.length < 2) { $results.empty(); return; }
+			searchT = setTimeout(function () {
+				$.getJSON('review.php?action=search-doctors&q=' + encodeURIComponent(q), function (r) {
+					if (!r.success || !r.doctors.length) { $results.html('<small class="text-muted">No matching doctors.</small>'); return; }
+					var html = '<div class="list-group list-group-flush border rounded mt-1" style="max-height:200px;overflow-y:auto;">';
+					r.doctors.forEach(function (d) {
+						html += '<button type="button" class="list-group-item list-group-item-action py-1 px-2 consultantPick" data-id="' + d.user_id + '" data-name="' + escapeHtml(d.name) + '">'
+						     +  '<strong>' + escapeHtml(d.name) + '</strong>'
+						     +  ' <small class="text-muted">' + escapeHtml(d.email || '') + '</small>'
+						     +  '</button>';
+					});
+					html += '</div>';
+					$results.html(html);
+				});
+			}, 250);
+		});
+
+		$results.on('click', '.consultantPick', function () {
+			$docId.val($(this).data('id'));
+			$search.val($(this).data('name'));
+			$results.empty();
+			$btnAdd.prop('disabled', false);
+		});
+
+		$btnAdd.on('click', function () {
+			var docId = $docId.val();
+			if (!docId) return;
+			$btnAdd.prop('disabled', true);
+			$msg.text('');
+			$.post('review.php?action=add-consultant', {
+				csrf_token:     csrfToken,
+				case_sheet_id:  caseSheetId,
+				doctor_user_id: docId,
+				role_note:      $roleNote.val().trim()
+			}, null, 'json').done(function (r) {
+				if (!r.success) { $msg.text(r.message || 'Failed to add consultant.'); return; }
+				$('#noConsultantsMsg').remove();
+				var c = r.consultant;
+				var badge = $('<span class="badge badge-pill badge-info p-2 mr-2 mb-1"></span>')
+					.attr('data-consultant-id', c.doctor_user_id)
+					.html('<i class="fas fa-user-md mr-1"></i>' + escapeHtml(c.name)
+						+ (c.role_note ? ' <small class="ml-1 text-white-50">(' + escapeHtml(c.role_note) + ')</small>' : '')
+						+ ' <a href="#" class="text-white ml-2 removeConsultantBtn" data-doctor-id="' + c.doctor_user_id + '" title="Remove consultant"><i class="fas fa-times"></i></a>');
+				$list.append(badge);
+				$search.val(''); $docId.val(''); $roleNote.val(''); $results.empty();
+			}).fail(function () {
+				$msg.text('Server error. Please try again.');
+			}).always(function () {
+				$btnAdd.prop('disabled', !$docId.val());
+			});
+		});
+	}
+
+	$list.on('click', '.removeConsultantBtn', function (e) {
+		e.preventDefault();
+		var docId = $(this).data('doctor-id');
+		if (!confirm('Remove this consultant?')) return;
+		$.post('review.php?action=remove-consultant', {
+			csrf_token:     csrfToken,
+			case_sheet_id:  caseSheetId,
+			doctor_user_id: docId
+		}, null, 'json').done(function (r) {
+			if (r.success) {
+				$list.find('[data-consultant-id="' + docId + '"]').remove();
+				if ($list.children('[data-consultant-id]').length === 0) {
+					$list.prepend('<span id="noConsultantsMsg" class="text-muted small mr-3">No other doctors consulting on this case.</span>');
+				}
 			}
 		});
 	});

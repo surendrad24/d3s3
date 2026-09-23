@@ -364,10 +364,13 @@ class ClinicalController
 		$stmt = $pdo->prepare(
 			'SELECT * FROM case_sheets
 			  WHERE case_sheet_id = ?
-			    AND assigned_doctor_user_id = ?
-			    AND status = ?'
+			    AND status = ?
+			    AND (assigned_doctor_user_id = ?
+			         OR EXISTS (SELECT 1 FROM case_sheet_consultants
+			                     WHERE case_sheet_id = case_sheets.case_sheet_id
+			                       AND doctor_user_id = ?))'
 		);
-		$stmt->execute([$caseSheetId, $_SESSION['user_id'], 'DOCTOR_REVIEW']);
+		$stmt->execute([$caseSheetId, 'DOCTOR_REVIEW', $_SESSION['user_id'], $_SESSION['user_id']]);
 		$caseSheet = $stmt->fetch();
 
 		if (!$caseSheet) {
@@ -489,6 +492,20 @@ class ClinicalController
 		);
 		$stmt->execute([$caseSheetId]);
 		$auditLog = $stmt->fetchAll();
+
+		// Load consultants (secondary doctors on this case)
+		$stmt = $pdo->prepare(
+			"SELECT csc.doctor_user_id, csc.role_note, csc.added_at,
+			        TRIM(CONCAT(u.first_name,' ',u.last_name)) AS name,
+			        u.email
+			   FROM case_sheet_consultants csc
+			   JOIN users u ON u.user_id = csc.doctor_user_id
+			  WHERE csc.case_sheet_id = ?
+			  ORDER BY csc.added_at ASC"
+		);
+		$stmt->execute([$caseSheetId]);
+		$consultants = $stmt->fetchAll();
+		$isPrimaryDoctor = ((int)$caseSheet['assigned_doctor_user_id'] === (int)$_SESSION['user_id']);
 
 		require __DIR__ . '/../views/review.php';
 	}
@@ -1319,6 +1336,139 @@ class ClinicalController
 		header('X-Content-Type-Options: nosniff');
 		header('Cache-Control: private, max-age=3600');
 		readfile($full);
+		exit;
+	}
+
+	// ── Multi-consult ACL ──────────────────────────────────
+
+	public function addConsultant(): void
+	{
+		$this->requireDoctorRole();
+		header('Content-Type: application/json');
+		if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+			echo json_encode(['success' => false, 'message' => 'POST required']); exit;
+		}
+		if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+			echo json_encode(['success' => false, 'message' => 'Invalid security token.']); exit;
+		}
+		$caseSheetId  = (int)($_POST['case_sheet_id']  ?? 0);
+		$doctorUserId = (int)($_POST['doctor_user_id'] ?? 0);
+		$roleNote     = trim((string)($_POST['role_note'] ?? ''));
+		if ($caseSheetId <= 0 || $doctorUserId <= 0) {
+			echo json_encode(['success' => false, 'message' => 'Missing case sheet or doctor.']); exit;
+		}
+		if ($doctorUserId === (int)$_SESSION['user_id']) {
+			echo json_encode(['success' => false, 'message' => 'You are already the primary doctor on this case.']); exit;
+		}
+
+		$pdo = getDBConnection();
+
+		$stmt = $pdo->prepare('SELECT assigned_doctor_user_id FROM case_sheets WHERE case_sheet_id = ?');
+		$stmt->execute([$caseSheetId]);
+		$primary = $stmt->fetchColumn();
+		if (!$primary || (int)$primary !== (int)$_SESSION['user_id']) {
+			echo json_encode(['success' => false, 'message' => 'Only the primary doctor can add consultants.']); exit;
+		}
+
+		$stmt = $pdo->prepare("SELECT user_id, TRIM(CONCAT(first_name,' ',last_name)) AS name
+		                         FROM users WHERE user_id = ? AND role = 'DOCTOR' AND is_active = 1");
+		$stmt->execute([$doctorUserId]);
+		$doctor = $stmt->fetch();
+		if (!$doctor) {
+			echo json_encode(['success' => false, 'message' => 'Selected user is not an active doctor.']); exit;
+		}
+
+		try {
+			$pdo->prepare(
+				'INSERT INTO case_sheet_consultants
+				    (case_sheet_id, doctor_user_id, added_by_user_id, role_note)
+				  VALUES (?, ?, ?, ?)'
+			)->execute([$caseSheetId, $doctorUserId, $_SESSION['user_id'], $roleNote ?: null]);
+		} catch (PDOException $e) {
+			if ((int)$e->errorInfo[1] === 1062) {
+				echo json_encode(['success' => false, 'message' => 'That doctor is already a consultant on this case.']); exit;
+			}
+			throw $e;
+		}
+
+		$this->writeAuditLog($pdo, $caseSheetId, (int)$_SESSION['user_id'],
+			'consultant_added', null, $doctor['name']);
+
+		echo json_encode([
+			'success' => true,
+			'consultant' => [
+				'doctor_user_id' => (int)$doctor['user_id'],
+				'name'           => $doctor['name'],
+				'role_note'      => $roleNote,
+				'added_at'       => date('d M Y H:i'),
+			],
+		]);
+		exit;
+	}
+
+	public function removeConsultant(): void
+	{
+		$this->requireDoctorRole();
+		header('Content-Type: application/json');
+		if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+			echo json_encode(['success' => false, 'message' => 'POST required']); exit;
+		}
+		if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+			echo json_encode(['success' => false, 'message' => 'Invalid security token.']); exit;
+		}
+		$caseSheetId  = (int)($_POST['case_sheet_id']  ?? 0);
+		$doctorUserId = (int)($_POST['doctor_user_id'] ?? 0);
+		if ($caseSheetId <= 0 || $doctorUserId <= 0) {
+			echo json_encode(['success' => false, 'message' => 'Missing case sheet or doctor.']); exit;
+		}
+
+		$pdo = getDBConnection();
+		$stmt = $pdo->prepare('SELECT assigned_doctor_user_id FROM case_sheets WHERE case_sheet_id = ?');
+		$stmt->execute([$caseSheetId]);
+		$primary = (int)$stmt->fetchColumn();
+
+		// Primary can remove anyone; a consultant can remove themselves.
+		$callerIsPrimary = $primary === (int)$_SESSION['user_id'];
+		$callerRemovesSelf = $doctorUserId === (int)$_SESSION['user_id'];
+		if (!$callerIsPrimary && !$callerRemovesSelf) {
+			echo json_encode(['success' => false, 'message' => 'Only the primary doctor can remove a consultant.']); exit;
+		}
+
+		$stmt = $pdo->prepare(
+			'DELETE FROM case_sheet_consultants
+			  WHERE case_sheet_id = ? AND doctor_user_id = ?'
+		);
+		$stmt->execute([$caseSheetId, $doctorUserId]);
+
+		if ($stmt->rowCount() > 0) {
+			$this->writeAuditLog($pdo, $caseSheetId, (int)$_SESSION['user_id'],
+				'consultant_removed', (string)$doctorUserId, null);
+		}
+		echo json_encode(['success' => true]);
+		exit;
+	}
+
+	public function searchDoctors(): void
+	{
+		$this->requireDoctorRole();
+		header('Content-Type: application/json');
+		$q = trim((string)($_GET['q'] ?? ''));
+		if ($q === '') {
+			echo json_encode(['success' => true, 'doctors' => []]); exit;
+		}
+		$pdo = getDBConnection();
+		$like = '%' . $q . '%';
+		$stmt = $pdo->prepare(
+			"SELECT user_id, TRIM(CONCAT(first_name,' ',last_name)) AS name, email
+			   FROM users
+			  WHERE role = 'DOCTOR' AND is_active = 1
+			    AND user_id != ?
+			    AND (first_name LIKE ? OR last_name LIKE ? OR display_name LIKE ? OR email LIKE ?)
+			  ORDER BY first_name, last_name
+			  LIMIT 15"
+		);
+		$stmt->execute([$_SESSION['user_id'], $like, $like, $like, $like]);
+		echo json_encode(['success' => true, 'doctors' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
 		exit;
 	}
 
