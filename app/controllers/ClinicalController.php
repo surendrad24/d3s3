@@ -630,12 +630,19 @@ class ClinicalController
 			exit;
 		}
 
-		$firstName = trim($_POST['first_name'] ?? '');
-		$lastName  = trim($_POST['last_name'] ?? '');
-		$sex       = $_POST['sex'] ?? 'FEMALE';
-		$dob       = $_POST['date_of_birth'] ?? null;
-		$ageYears  = $_POST['age_years'] ?? null;
-		$phone     = trim($_POST['phone_e164'] ?? '');
+		$firstName  = trim($_POST['first_name'] ?? '');
+		$lastName   = trim($_POST['last_name'] ?? '');
+		$sex        = $_POST['sex'] ?? 'FEMALE';
+		$dob        = $_POST['date_of_birth'] ?? null;
+		$ageYears   = $_POST['age_years'] ?? null;
+		$phone      = trim($_POST['phone_e164'] ?? '');
+		$phoneType  = $_POST['phone_type'] ?? 'UNKNOWN';
+		$phone2     = trim($_POST['phone_secondary_e164'] ?? '');
+		$phone2Type = $_POST['phone_secondary_type'] ?? 'UNKNOWN';
+
+		$validPhoneTypes = ['SMARTPHONE', 'NON_SMART', 'UNKNOWN'];
+		if (!in_array($phoneType,  $validPhoneTypes, true)) { $phoneType  = 'UNKNOWN'; }
+		if (!in_array($phone2Type, $validPhoneTypes, true)) { $phone2Type = 'UNKNOWN'; }
 
 		if ($firstName === '') {
 			echo json_encode(['success' => false, 'message' => 'First name is required.']);
@@ -657,10 +664,17 @@ class ClinicalController
 
 		$pdo  = getDBConnection();
 		$stmt = $pdo->prepare(
-			'INSERT INTO patients (first_name, last_name, sex, date_of_birth, age_years, phone_e164, first_seen_date)
-			 VALUES (?, ?, ?, ?, ?, ?, CURDATE())'
+			'INSERT INTO patients
+			    (first_name, last_name, sex, date_of_birth, age_years,
+			     phone_e164, phone_type, phone_secondary_e164, phone_secondary_type,
+			     first_seen_date)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE())'
 		);
-		$stmt->execute([$firstName, $lastName ?: null, $sex, $dob, $ageYears, $phone ?: null]);
+		$stmt->execute([
+			$firstName, $lastName ?: null, $sex, $dob, $ageYears,
+			$phone  ?: null, $phone  ? $phoneType  : 'UNKNOWN',
+			$phone2 ?: null, $phone2 ? $phone2Type : 'UNKNOWN',
+		]);
 		$patientId = (int)$pdo->lastInsertId();
 
 		// Fetch the auto-generated patient_code (set by database trigger)
@@ -887,7 +901,8 @@ class ClinicalController
 		// Whitelist of editable fields (patient_code is NOT included)
 		$allowed = [
 			'first_name', 'last_name', 'sex', 'date_of_birth', 'age_years',
-			'phone_e164', 'email', 'address_line1', 'city', 'state_province',
+			'phone_e164', 'phone_type', 'phone_secondary_e164', 'phone_secondary_type',
+			'email', 'address_line1', 'city', 'state_province',
 			'postal_code', 'blood_group', 'allergies',
 			'emergency_contact_name', 'emergency_contact_phone',
 		];
@@ -898,6 +913,14 @@ class ClinicalController
 			// sex is NOT NULL in the DB -- default to UNKNOWN if blank or invalid
 			if (!in_array($input['sex'], $validSex, true)) {
 				$input['sex'] = 'UNKNOWN';
+			}
+		}
+
+		// phone_type / phone_secondary_type are NOT NULL enums -- fall back to UNKNOWN
+		$validPhoneType = ['SMARTPHONE', 'NON_SMART', 'UNKNOWN'];
+		foreach (['phone_type', 'phone_secondary_type'] as $ptField) {
+			if (isset($input[$ptField]) && !in_array($input[$ptField], $validPhoneType, true)) {
+				$input[$ptField] = 'UNKNOWN';
 			}
 		}
 
@@ -961,7 +984,8 @@ class ClinicalController
 			// ── Return the refreshed patient row so JS can update the display
 			$stmt = $pdo->prepare(
 				'SELECT patient_id, patient_code, first_name, last_name, sex, date_of_birth,
-				        age_years, phone_e164, email, address_line1, city, state_province,
+				        age_years, phone_e164, phone_type, phone_secondary_e164, phone_secondary_type,
+				        email, address_line1, city, state_province,
 				        postal_code, blood_group, allergies,
 				        emergency_contact_name, emergency_contact_phone
 				   FROM patients WHERE patient_id = ?'

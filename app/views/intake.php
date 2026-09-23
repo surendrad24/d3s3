@@ -225,7 +225,12 @@ load_language($_SESSION['language'] ?? 'en');
 									<div class="row">
 										<div class="col-md-4"><div class="form-group"><label><?= __('date_of_birth') ?></label><input type="date" class="form-control" id="newDob" /></div></div>
 										<div class="col-md-4"><div class="form-group"><label><?= __('age_years') ?></label><input type="number" class="form-control" id="newAge" min="0" max="150" /></div></div>
-										<div class="col-md-4"><div class="form-group"><label><?= __('phone') ?></label><input type="text" class="form-control" id="newPhone" placeholder="+91..." /></div></div>
+										<div class="col-md-2"><div class="form-group"><label>Phone 1</label><input type="text" class="form-control" id="newPhone" placeholder="+91..." /></div></div>
+										<div class="col-md-2"><div class="form-group"><label>Type</label><select class="form-control" id="newPhoneType"><option value="UNKNOWN">Unknown</option><option value="SMARTPHONE">Smartphone</option><option value="NON_SMART">Non-smart</option></select></div></div>
+									</div>
+									<div class="row">
+										<div class="col-md-4"><div class="form-group"><label>Phone 2 (optional)</label><input type="text" class="form-control" id="newPhone2" placeholder="+91..." /></div></div>
+										<div class="col-md-2"><div class="form-group"><label>Type</label><select class="form-control" id="newPhone2Type"><option value="UNKNOWN">Unknown</option><option value="SMARTPHONE">Smartphone</option><option value="NON_SMART">Non-smart</option></select></div></div>
 									</div>
 									<div id="registerError" class="alert alert-danger d-none"></div>
 									<button type="button" class="btn btn-primary" id="registerPatientBtn"><i class="fas fa-user-plus mr-1"></i><?= __('register_and_select') ?></button>
@@ -387,9 +392,20 @@ load_language($_SESSION['language'] ?? 'en');
 											<div class="card card-outline card-info h-100">
 												<div class="card-header py-2"><h6 class="mb-0 text-muted text-uppercase" style="font-size:.72rem;letter-spacing:.08em;"><?= __('contact') ?></h6></div>
 												<div class="card-body py-3">
+													<?php
+													$_ptLabels = ['SMARTPHONE'=>'Smartphone','NON_SMART'=>'Non-smart','UNKNOWN'=>''];
+													$_ptBadge  = function($t) use ($_ptLabels) {
+														$label = $_ptLabels[$t] ?? '';
+														if ($label === '') return '';
+														$cls = ($t === 'SMARTPHONE') ? 'badge-info' : 'badge-secondary';
+														return ' <span class="badge ' . $cls . ' ml-1" style="font-size:.65rem;">' . htmlspecialchars($label) . '</span>';
+													};
+													?>
 													<dl class="row mb-0">
-														<dt class="col-4 text-muted font-weight-normal small"><?= __('phone') ?></dt>
-														<dd class="col-8 mb-2" id="vr-phone_e164"><?= $p['phone_e164'] ? htmlspecialchars($p['phone_e164']) : '<span class="text-muted">&mdash;</span>' ?></dd>
+														<dt class="col-4 text-muted font-weight-normal small">Phone 1</dt>
+														<dd class="col-8 mb-2" id="vr-phone_e164"><?= $p['phone_e164'] ? htmlspecialchars($p['phone_e164']) . $_ptBadge($p['phone_type'] ?? 'UNKNOWN') : '<span class="text-muted">&mdash;</span>' ?></dd>
+														<dt class="col-4 text-muted font-weight-normal small">Phone 2</dt>
+														<dd class="col-8 mb-2" id="vr-phone_secondary_e164"><?= !empty($p['phone_secondary_e164']) ? htmlspecialchars($p['phone_secondary_e164']) . $_ptBadge($p['phone_secondary_type'] ?? 'UNKNOWN') : '<span class="text-muted">&mdash;</span>' ?></dd>
 														<dt class="col-4 text-muted font-weight-normal small"><?= __('email') ?></dt>
 														<dd class="col-8 mb-0" id="vr-email"><?= $p['email'] ? htmlspecialchars($p['email']) : '<span class="text-muted">&mdash;</span>' ?></dd>
 													</dl>
@@ -477,8 +493,25 @@ load_language($_SESSION['language'] ?? 'en');
 										<div class="card-header py-2"><h6 class="mb-0 text-muted text-uppercase" style="font-size:.72rem;letter-spacing:.08em;"><?= __('contact') ?></h6></div>
 										<div class="card-body py-3">
 											<div class="row">
-												<div class="col-md-4 mb-3 mb-md-0"><label class="small font-weight-bold"><?= __('phone') ?></label><input type="text" class="form-control" id="ve-phone_e164" value="<?= htmlspecialchars($p['phone_e164'] ?? '') ?>" placeholder="+91 98765 43210" /></div>
-												<div class="col-md-5 mb-0"><label class="small font-weight-bold"><?= __('email') ?></label><input type="email" class="form-control" id="ve-email" value="<?= htmlspecialchars($p['email'] ?? '') ?>" /></div>
+												<div class="col-md-3 mb-3 mb-md-0"><label class="small font-weight-bold">Phone 1</label><input type="text" class="form-control" id="ve-phone_e164" value="<?= htmlspecialchars($p['phone_e164'] ?? '') ?>" placeholder="+91 98765 43210" /></div>
+												<div class="col-md-2 mb-3 mb-md-0"><label class="small font-weight-bold">Type</label>
+													<?php $_pt = $p['phone_type'] ?? 'UNKNOWN'; ?>
+													<select class="form-control" id="ve-phone_type">
+														<option value="UNKNOWN"    <?= $_pt === 'UNKNOWN'    ? 'selected' : '' ?>>Unknown</option>
+														<option value="SMARTPHONE" <?= $_pt === 'SMARTPHONE' ? 'selected' : '' ?>>Smartphone</option>
+														<option value="NON_SMART"  <?= $_pt === 'NON_SMART'  ? 'selected' : '' ?>>Non-smart</option>
+													</select>
+												</div>
+												<div class="col-md-3 mb-3 mb-md-0"><label class="small font-weight-bold">Phone 2</label><input type="text" class="form-control" id="ve-phone_secondary_e164" value="<?= htmlspecialchars($p['phone_secondary_e164'] ?? '') ?>" placeholder="+91 ..." /></div>
+												<div class="col-md-2 mb-3 mb-md-0"><label class="small font-weight-bold">Type</label>
+													<?php $_pt2 = $p['phone_secondary_type'] ?? 'UNKNOWN'; ?>
+													<select class="form-control" id="ve-phone_secondary_type">
+														<option value="UNKNOWN"    <?= $_pt2 === 'UNKNOWN'    ? 'selected' : '' ?>>Unknown</option>
+														<option value="SMARTPHONE" <?= $_pt2 === 'SMARTPHONE' ? 'selected' : '' ?>>Smartphone</option>
+														<option value="NON_SMART"  <?= $_pt2 === 'NON_SMART'  ? 'selected' : '' ?>>Non-smart</option>
+													</select>
+												</div>
+												<div class="col-md-2 mb-0"><label class="small font-weight-bold"><?= __('email') ?></label><input type="email" class="form-control" id="ve-email" value="<?= htmlspecialchars($p['email'] ?? '') ?>" /></div>
 											</div>
 										</div>
 									</div>
@@ -1602,9 +1635,9 @@ load_language($_SESSION['language'] ?? 'en');
 			var firstName = $.trim($('#newFirstName').val());
 			if (!firstName) { $err.text('First name is required.').removeClass('d-none'); return; }
 			$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Registering...');
-			$.post('intake.php?action=register-patient', { csrf_token: csrfToken, first_name: firstName, last_name: $.trim($('#newLastName').val()), sex: $('#newSex').val(), date_of_birth: $('#newDob').val(), age_years: $('#newAge').val(), phone_e164: $.trim($('#newPhone').val()) }, function (data) {
+			$.post('intake.php?action=register-patient', { csrf_token: csrfToken, first_name: firstName, last_name: $.trim($('#newLastName').val()), sex: $('#newSex').val(), date_of_birth: $('#newDob').val(), age_years: $('#newAge').val(), phone_e164: $.trim($('#newPhone').val()), phone_type: $('#newPhoneType').val(), phone_secondary_e164: $.trim($('#newPhone2').val()), phone_secondary_type: $('#newPhone2Type').val() }, function (data) {
 				$btn.prop('disabled', false).html('<i class="fas fa-user-plus mr-1"></i>Register & Select');
-				if (data.success) { selectPatient({ patient_id: data.patient_id, patient_code: data.patient_code, first_name: data.first_name, last_name: data.last_name || '', sex: $('#newSex').val(), age_years: $('#newAge').val() || null, phone_e164: $.trim($('#newPhone').val()) || null }); $('#newFirstName, #newLastName, #newDob, #newAge, #newPhone').val(''); $('#newSex').val('FEMALE'); }
+				if (data.success) { selectPatient({ patient_id: data.patient_id, patient_code: data.patient_code, first_name: data.first_name, last_name: data.last_name || '', sex: $('#newSex').val(), age_years: $('#newAge').val() || null, phone_e164: $.trim($('#newPhone').val()) || null }); $('#newFirstName, #newLastName, #newDob, #newAge, #newPhone, #newPhone2').val(''); $('#newSex').val('FEMALE'); $('#newPhoneType, #newPhone2Type').val('UNKNOWN'); }
 				else { $err.text(data.message || 'Registration failed.').removeClass('d-none'); }
 			}, 'json').fail(function () { $btn.prop('disabled', false).html('<i class="fas fa-user-plus mr-1"></i>Register & Select'); $err.text('Server error.').removeClass('d-none'); });
 		});
@@ -2282,6 +2315,9 @@ load_language($_SESSION['language'] ?? 'en');
 			age_years:               document.getElementById('ve-age_years').value,
 			blood_group:             document.getElementById('ve-blood_group').value,
 			phone_e164:              document.getElementById('ve-phone_e164').value.trim(),
+			phone_type:              document.getElementById('ve-phone_type').value,
+			phone_secondary_e164:    document.getElementById('ve-phone_secondary_e164').value.trim(),
+			phone_secondary_type:    document.getElementById('ve-phone_secondary_type').value,
 			email:                   document.getElementById('ve-email').value.trim(),
 			address_line1:           document.getElementById('ve-address_line1').value.trim(),
 			city:                    document.getElementById('ve-city').value.trim(),
@@ -2317,6 +2353,8 @@ load_language($_SESSION['language'] ?? 'en');
 			document.getElementById('vr-age_years').textContent               = p.age_years || '';
 			document.getElementById('vr-blood_group').textContent             = p.blood_group || '';
 			document.getElementById('vr-phone_e164').textContent              = p.phone_e164 || '';
+			var vrPhone2 = document.getElementById('vr-phone_secondary_e164');
+			if (vrPhone2) vrPhone2.textContent = p.phone_secondary_e164 || '';
 			document.getElementById('vr-email').textContent                   = p.email || '';
 			document.getElementById('vr-address_line1').textContent           = p.address_line1 || '';
 			document.getElementById('vr-city').textContent                    = p.city || '';
